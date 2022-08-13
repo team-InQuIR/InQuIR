@@ -1,5 +1,4 @@
-use super::{Expr};
-use std::collections::HashMap;
+use crate::ast::Expr;
 
 pub struct Metrics {
     comm_depth: u32,

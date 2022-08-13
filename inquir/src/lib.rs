@@ -5,14 +5,14 @@ pub use ast::{
     ProcessorId,
     Expr,
     InitExpr,
-    FreeExpr,
-    GenEntExpr,
-    EntSwapExpr,
-    QSendExpr,
-    QRecvExpr,
+    ApplyExpr,
     RCXCExpr,
     RCXTExpr,
-    ApplyExpr,
+    QSendExpr,
+    QRecvExpr,
     MeasureExpr,
-    PrimitiveGate
+    GenEntExpr,
+    EntSwapExpr,
+    PrimitiveGate,
 };
+

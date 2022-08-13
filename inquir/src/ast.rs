@@ -1,6 +1,5 @@
 use std::convert::From;
 use std::fmt;
-use crate::hir;
 
 pub type ProcessorId = u32;
 
@@ -214,19 +213,3 @@ impl fmt::Display for PrimitiveGate {
         }
     }
 }
-
-impl From<hir::PrimitiveGate> for PrimitiveGate {
-    fn from(item: hir::PrimitiveGate) -> Self {
-        match item {
-            hir::PrimitiveGate::X => PrimitiveGate::X,
-            hir::PrimitiveGate::Y => PrimitiveGate::Y,
-            hir::PrimitiveGate::Z => PrimitiveGate::Z,
-            hir::PrimitiveGate::H => PrimitiveGate::H,
-            hir::PrimitiveGate::T => PrimitiveGate::T,
-            hir::PrimitiveGate::Tdg => PrimitiveGate::Tdg,
-            hir::PrimitiveGate::S => unimplemented!(),
-            hir::PrimitiveGate::CX => PrimitiveGate::CX,
-        }
-    }
-}
-
