@@ -13,6 +13,7 @@ pub use ast::{
     MeasureExpr,
     GenEntExpr,
     EntSwapExpr,
+    System, LocExpr,
     PrimitiveGate,
 };
 

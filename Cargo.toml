@@ -2,4 +2,5 @@
 members = [
   "inquir",
   "compiler",
+  "graph",
 ]

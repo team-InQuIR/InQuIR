@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use crate::arch::Configuration;
 use crate::hir;
 
@@ -13,7 +13,7 @@ pub trait NodeAllocator {
 }
 
 pub struct NaiveNodeAllocator {
-    current_pos: HashMap<String, u32>,
+    current_pos: BTreeMap<String, u32>,
     free_qubits: Vec<u32>,
 }
 
@@ -26,9 +26,9 @@ impl NaiveNodeAllocator {
         }
     }
 
-    fn create_initial_map(exps: &Vec<hir::Expr>, config: &Configuration) -> (HashMap<String, u32>, Vec<u32>) {
+    fn create_initial_map(exps: &Vec<hir::Expr>, config: &Configuration) -> (BTreeMap<String, u32>, Vec<u32>) {
         let mut num_of_qubits: Vec<u32> = (0..config.node_size()).map(|i| config.node_info_ref(i).num_of_qubits()).collect();
-        let mut map = HashMap::new();
+        let mut map = BTreeMap::new();
         let mut target_node = 0;
         let mut next_node = || {
             while target_node < num_of_qubits.len() && num_of_qubits[target_node] == 0 {

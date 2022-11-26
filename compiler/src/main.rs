@@ -6,6 +6,7 @@ use inqcc::{
     codegen::always_rcx::AlwaysRemoteAllocator,
 };
 use inquir::metrics::Metrics;
+use inquir::System;
 
 use std::fs;
 use std::path::Path;
@@ -35,18 +36,14 @@ struct Args {
     /// Compilation strategy
     #[clap(arg_enum, long)]
     strategy: Strategy,
+
+    #[clap(long)]
+    metrics: bool,
 }
 
-fn output_to_inquir_file(filename: String, program: &Vec<Vec<inquir::Expr>>) -> Result<(), std::io::Error> {
+fn output_to_inquir_file(filename: String, program: &System) -> Result<(), std::io::Error> {
     let mut file = fs::File::create(filename)?;
-    for (node, exps) in program.iter().enumerate() {
-        writeln!(file, "node {}:", node)?;
-        for e in exps {
-            writeln!(file, "  {}", e)?;
-        }
-        writeln!(file, "end.\n")?;
-    }
-    Ok(())
+    write!(file, "{}", program)
 }
 
 fn main() {
@@ -72,7 +69,10 @@ fn main() {
     };
     output_to_inquir_file(output_filename, &res).unwrap();
 
-    let metrics = Metrics::new(&res);
-    println!("Metrics:");
-    println!("  Communication depth: {}", metrics.comm_depth());
+    if args.metrics {
+        let metrics = Metrics::new(&res);
+        println!("Metrics:");
+        println!("  Communication depth: {}", metrics.e_depth());
+        println!("  Communication count: {}", metrics.e_count());
+    }
 }

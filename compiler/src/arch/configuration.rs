@@ -1,5 +1,5 @@
 use std::fs;
-use crate::graph::{UnGraph, NodeIndex};
+use graph::graph::{UnGraph, NodeIndex};
 use serde::{
     de::Error,
     Deserialize,

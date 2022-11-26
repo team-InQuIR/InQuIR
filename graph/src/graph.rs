@@ -1,5 +1,3 @@
-pub mod algo;
-
 pub type NodeIndex = usize;
 pub type EdgeIndex = usize;
 

@@ -9,3 +9,4 @@ edition = "2021"
 anyhow = "1.0"
 nom = "7"
 thiserror = "1.0"
+graph = { path = "../graph" }

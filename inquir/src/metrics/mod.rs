@@ -1,94 +1,56 @@
-use crate::ast::Expr;
+use crate::ast::{
+    Expr,
+    System, LocExpr,
+};
 
 pub struct Metrics {
-    comm_depth: u32,
+    e_depth: u32,
+    e_count: u32,
 }
 
 impl Metrics {
-    pub fn new(es: &Vec<Vec<Expr>>) -> Self {
+    pub fn new(s: &System) -> Self {
         Self {
-            comm_depth: calc_comm_depth(es),
+            e_depth: calc_e_depth(s),
+            e_count: calc_e_count(s),
         }
     }
 
-    pub fn comm_depth(&self) -> u32 {
-        self.comm_depth
+    pub fn e_count(&self) -> u32 {
+        self.e_count
+    }
+
+    pub fn e_depth(&self) -> u32 {
+        self.e_depth
     }
 }
 
-pub fn calc_comm_depth(es: &Vec<Vec<Expr>>) -> u32 {
-    0
-    //let es = es.clone();
-    //let es: Vec<Vec<Expr>> = es.into_iter().map(|es| es.into_iter().filter(|e| match e {
-    //    Expr::QSendMove { id: _, ent: _ }
-    //    | Expr::QRecv { id: _, ent: _ }
-    //    | Expr::RCXC { id: _, ent: _ }
-    //    | Expr::RCXT { id: _, ent: _ } => true,
-    //    _ => false,
-    //}).collect()).collect();
-
-    //let mut depth = 0;
-    //let mut iter = vec![0; es.len()];
-    //loop {
-    //    if iter.iter().enumerate().all(|(i, j)| *j == es[i].len()) {
-    //        break;
-    //    }
-    //    let mut curr_que = HashMap::new();
-    //    for i in 0..iter.len() {
-    //        if es[i].len() <= iter[i] {
-    //            continue;
-    //        }
-    //        match &es[i][iter[i]] {
-    //            Expr::QSendMove { id: _, ent } => {
-    //                let node1 = u32::min(i as u32, *node);
-    //                let node2 = u32::max(i as u32, *node);
-    //                if curr_que.contains_key(&(node1, node2)) {
-    //                    *curr_que.get_mut(&(node1, node2)).unwrap() += 1;
-    //                } else {
-    //                    curr_que.insert((node1, node2), 1);
-    //                }
-    //            },
-    //            Expr::RCXC { id: _, node } => {
-    //                let node1 = u32::min(i as u32, *node);
-    //                let node2 = u32::max(i as u32, *node);
-    //                if curr_que.contains_key(&(node1, node2)) {
-    //                    *curr_que.get_mut(&(node1, node2)).unwrap() += 2;
-    //                } else {
-    //                    curr_que.insert((node1, node2), 2);
-    //                }
-    //            },
-    //            Expr::QRecv { id: _, src: node } => {
-    //                let node1 = u32::min(i as u32, *node);
-    //                let node2 = u32::max(i as u32, *node);
-    //                if curr_que.contains_key(&(node1, node2)) {
-    //                    *curr_que.get_mut(&(node1, node2)).unwrap() -= 1;
-    //                } else {
-    //                    curr_que.insert((node1, node2), -1);
-    //                }
-    //            },
-    //            Expr::RCXT { id: _, node } => {
-    //                let node1 = u32::min(i as u32, *node);
-    //                let node2 = u32::max(i as u32, *node);
-    //                if curr_que.contains_key(&(node1, node2)) {
-    //                    *curr_que.get_mut(&(node1, node2)).unwrap() -= 2;
-    //                } else {
-    //                    curr_que.insert((node1, node2), -2);
-    //                }
-    //            },
-    //            _ => std::unreachable!(),
-    //        }
-    //    }
-    //    for ((node1, node2), count) in curr_que {
-    //        if count == 0 { // can establish communication
-    //            iter[node1 as usize] += 1;
-    //            iter[node2 as usize] += 1;
-    //        }
-    //    }
-    //    depth += 1;
-    //}
-    //depth
+pub fn calc_e_depth(s: &System) -> u32 {
+    match s {
+        System::Located(LocExpr { p: _, exps }) => exps.iter().fold(0, |sum, e| sum + calc_e_depth_exp(e)),
+        System::Composition(ss) => ss.iter().map(|t| calc_e_depth(t)).max().unwrap(),
+    }
 }
 
-pub fn execution_time(es: &Vec<Vec<Expr>>) {
-    unimplemented!()
+fn calc_e_depth_exp(e: &Expr) -> u32 {
+    match e {
+        Expr::GenEnt(_) => 1,
+        Expr::Parallel(es) => es.iter().map(|e| calc_e_depth_exp(e)).max().unwrap(),
+        _ => 0,
+    }
+}
+
+pub fn calc_e_count(s: &System) -> u32 {
+    match s {
+        System::Located(LocExpr { p: _, exps }) =>  exps.iter().map(|e| calc_e_count_exp(e)).sum(),
+        System::Composition(ss) => ss.iter().map(|t| calc_e_count(t)).sum(),
+    }
+}
+
+fn calc_e_count_exp(e: &Expr) -> u32 {
+    match e {
+        Expr::GenEnt(_) => 1,
+        Expr::Parallel(es) => es.iter().map(|e| calc_e_count_exp(e)).sum(),
+        _ => 0,
+    }
 }

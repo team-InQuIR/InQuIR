@@ -3,13 +3,14 @@ pub mod always_rcx;
 
 use allocation::NodeAllocator;
 use inquir;
+use inquir::{System, LocExpr};
+use graph::{
+    graph::NodeIndex,
+    algo::dijkstra,
+};
 use crate::{
     arch::{Configuration, configuration::ConnectionGraph},
     hir,
-    graph::{
-        NodeIndex,
-        algo::dijkstra,
-    },
 };
 
 fn build_all_pair_shortest_path(g: &ConnectionGraph) -> Vec<Vec<Option<NodeIndex>>> {
@@ -43,7 +44,7 @@ pub fn codegen(
     exps: Vec<hir::Expr>,
     config: &Configuration,
     mut allocator: Box<dyn NodeAllocator>
-) -> Vec<Vec<inquir::Expr>> {
+) -> inquir::System {
     let mut fresh_ent_id_ = 0;
     let mut fresh_ent_id = || {
         let res = format!("ent{}", fresh_ent_id_);
@@ -83,14 +84,14 @@ pub fn codegen(
                                     // generate entanglements
                                     for i in 0..path.len() {
                                         if i >= 1 {
-                                            let dst = ent_ids[2*i-1].clone();
+                                            let label = ent_ids[2*i-1].clone();
                                             let partner = path[i - 1] as inquir::ProcessorId;
-                                            res[path[i]].push(inquir::Expr::from(inquir::GenEntExpr { dst, partner }));
+                                            res[path[i]].push(inquir::Expr::from(inquir::GenEntExpr { label, partner }));
                                         }
                                         if i + 1 < path.len() {
-                                            let dst = ent_ids[2*i].clone();
+                                            let label = ent_ids[2*i].clone();
                                             let partner = path[i + 1] as inquir::ProcessorId;
-                                            res[path[i]].push(inquir::Expr::from(inquir::GenEntExpr { dst, partner }));
+                                            res[path[i]].push(inquir::Expr::from(inquir::GenEntExpr { label, partner }));
                                         }
                                     }
                                     // perform entanglement swapping
@@ -117,14 +118,14 @@ pub fn codegen(
                                     // generate entanglements
                                     for i in 0..path.len() {
                                         if i >= 1 {
-                                            let dst = ent_ids[2*i-1].clone();
+                                            let label = ent_ids[2*i-1].clone();
                                             let partner = path[i - 1] as inquir::ProcessorId;
-                                            res[path[i]].push(inquir::Expr::from(inquir::GenEntExpr { dst, partner }));
+                                            res[path[i]].push(inquir::Expr::from(inquir::GenEntExpr { label, partner }));
                                         }
                                         if i + 1 < path.len() {
-                                            let dst = ent_ids[2*i].clone();
+                                            let label = ent_ids[2*i].clone();
                                             let partner = path[i + 1] as inquir::ProcessorId;
-                                            res[path[i]].push(inquir::Expr::from(inquir::GenEntExpr { dst, partner }));
+                                            res[path[i]].push(inquir::Expr::from(inquir::GenEntExpr { label, partner }));
                                         }
                                     }
                                     // perform entanglement swapping
@@ -163,5 +164,9 @@ pub fn codegen(
             },
         }
     }
-        res
+
+    System::Composition(
+        res.into_iter().enumerate()
+           .map(|(i, exps)| System::Located(LocExpr { p: i as u32, exps })).collect()
+    )
 }

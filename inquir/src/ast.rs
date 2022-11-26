@@ -45,6 +45,14 @@ pub enum Expr {
     Parallel(Vec<Expr>),
 }
 
+pub enum System {
+    /// a located expression `[e]p`.
+    Located(LocExpr),
+
+    /// a composition of systems: `P1 | P2`.
+    Composition(Vec<System>),
+}
+
 
 impl From<InitExpr> for Expr {
     fn from(e: InitExpr) -> Self {
@@ -118,7 +126,7 @@ pub struct FreeExpr {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GenEntExpr {
-    pub dst: String,
+    pub label: String,
     pub partner: ProcessorId,
 }
 
@@ -165,6 +173,12 @@ pub struct MeasureExpr {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocExpr {
+    pub p: ProcessorId,
+    pub exps: Vec<Expr>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PrimitiveGate {
     X,
     Y,
@@ -180,7 +194,7 @@ impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Expr::Skip => write!(f, "skip;"),
-            Expr::GenEnt(GenEntExpr { dst, partner }) => write!(f, "{} = genEnt via {};", dst, partner),
+            Expr::GenEnt(GenEntExpr { label, partner }) => write!(f, "{} = genEnt via {};", label, partner),
             Expr::EntSwap(EntSwapExpr { arg1, arg2 }) => write!(f, "entSwap {} {};", arg1, arg2),
             Expr::Init(InitExpr { dst }) => write!(f, "{} = init();", dst),
             Expr::Free(FreeExpr { arg }) => write!(f, "free {};", arg),
@@ -193,6 +207,27 @@ impl fmt::Display for Expr {
             Expr::Parallel(es) => {
                 let s: Vec<String> = es.iter().map(|e| format!("{:?}", e)).collect();
                 let s = s.join(" | ");
+                write!(f, "{}", s)
+            },
+        }
+    }
+}
+
+impl fmt::Display for System {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            System::Located(LocExpr { p, exps }) => {
+                let mut s = String::new();
+                s += format!("{} {{\n", p).as_str();
+                exps.iter().for_each(|e| {
+                    s += format!("  {}\n", e).as_str();
+                });
+                s += "\n}";
+                write!(f, "{}", s)
+            },
+            System::Composition(ss) => {
+                let s: Vec<_> = ss.iter().map(|s| format!("{}", s)).collect();
+                let s = s.join("\n");
                 write!(f, "{}", s)
             },
         }

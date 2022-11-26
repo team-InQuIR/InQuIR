@@ -1,4 +1,4 @@
-use super::super::{Graph, DiGraph, Node, NodeIndex, EdgeIndex, EdgeType};
+use crate::graph::{Graph, NodeIndex, EdgeIndex, EdgeType};
 use std::collections::BinaryHeap;
 
 // TODO: generalize the type of edge weights
@@ -51,7 +51,7 @@ pub fn dijkstra<N: Clone, E: Clone, ET: EdgeType, F>(
 
 #[cfg(test)]
 mod test {
-    use super::super::super::{DiGraph, UnGraph};
+    use super::super::super::graph::{DiGraph, UnGraph};
     use super::dijkstra;
 
     #[test]
