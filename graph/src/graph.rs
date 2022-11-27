@@ -117,6 +117,10 @@ impl<N: Clone, E: Clone, ET: EdgeType> Graph<N, E, ET> {
         &self.edges[eid]
     }
 
+    pub fn edges(&self) -> &Vec<Edge<E>> {
+        &self.edges
+    }
+
     pub fn edge_weight_mut(&mut self, eid: EdgeIndex) -> &mut E {
         self.edges[eid].weight_mut()
     }

@@ -10,6 +10,7 @@ use graph::{
 };
 use crate::{
     arch::{Configuration, configuration::ConnectionGraph},
+    optimizer,
     hir,
 };
 
@@ -37,10 +38,20 @@ fn construct_shortest_path(
     }
     assert!(current == from);
 
-    path
+    path.into_iter().rev().collect()
 }
 
 pub fn codegen(
+    exps: Vec<hir::Expr>,
+    config: &Configuration,
+    allocator: Box<dyn NodeAllocator>
+) -> inquir::System {
+    let s = route_telegates(exps, config, allocator);
+    let s = optimizer::vectorize(s, config);
+    s
+}
+
+fn route_telegates(
     exps: Vec<hir::Expr>,
     config: &Configuration,
     mut allocator: Box<dyn NodeAllocator>

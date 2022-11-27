@@ -6,7 +6,7 @@ use serde::{
     Deserializer,
 };
 
-pub type ConnectionGraph = UnGraph<(), ()>;
+pub type ConnectionGraph = UnGraph<(), u32>;
 
 #[derive(Deserialize, Debug)]
 pub struct NodeInfo {
@@ -64,14 +64,14 @@ fn from_graph<'de, D>(deserializer: D) -> Result<ConnectionGraph, D::Error>
 where
     D: Deserializer<'de>
 {
-    let edges: Vec<(u32, u32)> = Deserialize::deserialize(deserializer)?;
-    let node_count = edges.iter().fold(0, |acc, &(u, v)| u32::max(acc, u32::max(u, v))) + 1;
+    let edges: Vec<(u32, u32, u32)> = Deserialize::deserialize(deserializer)?;
+    let node_count = edges.iter().fold(0, |acc, &(u, v, _)| u32::max(acc, u32::max(u, v))) + 1;
     let mut g = ConnectionGraph::new();
     for _ in 0..node_count {
         g.add_node(());
     }
-    for (u, v) in edges {
-        g.add_edge(u as NodeIndex, v as NodeIndex, ());
+    for (u, v, cap) in edges {
+        g.add_edge(u as NodeIndex, v as NodeIndex, cap);
     }
     Ok(g)
 }

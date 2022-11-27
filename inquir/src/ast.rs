@@ -27,6 +27,12 @@ pub enum Expr {
     /// `x = qrecv via y;`
     QRecv(QRecvExpr),
 
+    /// A classical sending instruction: `x!<y>;`.
+    Send(SendExpr),
+
+    /// A classical receiving instruction: `x!<y>;`.
+    Recv(RecvExpr),
+
     /// Remote CX gate (controlled side)
     /// `rcxc x via y;`
     RCXC(RCXCExpr),
@@ -45,6 +51,7 @@ pub enum Expr {
     Parallel(Vec<Expr>),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum System {
     /// a located expression `[e]p`.
     Located(LocExpr),
@@ -149,6 +156,18 @@ pub struct QRecvExpr {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SendExpr {
+    pub ch: String,
+    pub data: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecvExpr {
+    pub ch: String,
+    pub data: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RCXCExpr {
     pub arg: String,
     pub ent: String,
@@ -200,13 +219,15 @@ impl fmt::Display for Expr {
             Expr::Free(FreeExpr { arg }) => write!(f, "free {};", arg),
             Expr::QSend(QSendExpr { arg, ent }) => write!(f, "qsend {} via {};", arg, ent),
             Expr::QRecv(QRecvExpr { dst, ent }) => write!(f, "{} = qrecv via {};", dst, ent),
+            Expr::Send(SendExpr { ch, data }) => write!(f, "send {} via {};", data, ch),
+            Expr::Recv(RecvExpr { ch, data }) => write!(f, "{} = recv via {};", data, ch),
             Expr::RCXC(RCXCExpr { arg, ent }) => write!(f, "rcxc {} via {};", arg, ent),
             Expr::RCXT(RCXTExpr { arg, ent }) => write!(f, "rcxt {} via {};", arg, ent),
             Expr::Apply(ApplyExpr { gate, args }) => write!(f, "{} {:?};", gate, args),
             Expr::Measure(MeasureExpr { dst, args }) => write!(f, "{} = measure {:?}", dst, args),
             Expr::Parallel(es) => {
-                let s: Vec<String> = es.iter().map(|e| format!("{:?}", e)).collect();
-                let s = s.join(" | ");
+                let s: Vec<String> = es.iter().map(|e| format!("{}", e)).collect();
+                let s = s.join(" | ") + ";";
                 write!(f, "{}", s)
             },
         }
