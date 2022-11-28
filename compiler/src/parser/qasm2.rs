@@ -7,7 +7,6 @@ use crate::hir::ast::{
     PrimitiveGate
 };
 
-use itertools::concat;
 use anyhow::Result;
 use nom::{
     IResult,
@@ -15,20 +14,22 @@ use nom::{
     bytes::complete::{
         tag,
         take_while,
+        take_until,
     },
     character::complete::{
         char,
         alpha1,
         alphanumeric0,
     },
-    combinator::map_res,
+    combinator::{opt, map_res},
     error::VerboseError,
-    multi::{many0, many1, separated_list0, separated_list1},
+    multi::{separated_list0, separated_list1},
     sequence::{
         tuple,
         delimited,
         preceded,
-    }
+    },
+    number::complete::double,
 };
 
 #[derive(Debug)]
@@ -60,7 +61,17 @@ pub fn parse(input: &str) -> Result<Vec<Expr>, Error> {
 
 pub fn parse_header(input: &str) -> IResult<&str, (), VerboseError<&str>> {
     let (input, _) = tag("OPENQASM 2.0;")(input)?;
+    let (input, _) = spaces_and_endlines(input)?;
+    let (input, _) = opt(parse_include)(input)?;
+    let (input, _) = spaces_and_endlines(input)?;
+    Ok((input, ()))
+}
 
+fn parse_include(input: &str) -> IResult<&str, (), VerboseError<&str>> {
+    let (input, _) = tag("include")(input)?;
+    let (input, _) = spaces_and_endlines(input)?;
+    let (input, _) = take_until("\n")(input)?; // TODO?
+    let (input, _) = spaces_and_endlines(input)?;
     Ok((input, ()))
 }
 
@@ -84,12 +95,18 @@ pub fn parse_apply(input: &str) -> IResult<&str, ApplyExpr, VerboseError<&str>> 
 }
 
 pub fn parse_gate(input: &str) -> IResult<&str, PrimitiveGate, VerboseError<&str>> {
-    alt((parse_gate_cx, parse_gate_u3))(input)
+    alt((parse_gate_cx, parse_gate_rz, parse_gate_u3, parse_other_gates))(input)
 }
 
 pub fn parse_gate_cx(input: &str) -> IResult<&str, PrimitiveGate, VerboseError<&str>> {
     let (input, _) = tag("cx")(input)?;
     Ok((input, PrimitiveGate::CX))
+}
+
+pub fn parse_gate_rz(input: &str) -> IResult<&str, PrimitiveGate, VerboseError<&str>> {
+    let (input, _) = tag("rz")(input)?;
+    let (input, theta) = delimited(tag("("), double, tag(")"))(input)?;
+    Ok((input, PrimitiveGate::Rz(theta)))
 }
 
 pub fn parse_gate_u3(input: &str) -> IResult<&str, PrimitiveGate, VerboseError<&str>> {
@@ -104,6 +121,23 @@ pub fn parse_gate_u3(input: &str) -> IResult<&str, PrimitiveGate, VerboseError<&
         ("0", "0", "pi/4") => PrimitiveGate::T,
         ("0", "0", "-pi/4") => PrimitiveGate::Tdg,
         _ => unimplemented!() // TODO
+    };
+    Ok((input, gate))
+}
+
+fn parse_other_gates(input: &str) -> IResult<&str, PrimitiveGate, VerboseError<&str>> {
+    let (input, name) = alt((
+        tag("x"),
+        tag("z"),
+        tag("h"),
+        tag("t"),
+    ))(input)?;
+    let gate = match name {
+        "x" => PrimitiveGate::X,
+        "z" => PrimitiveGate::Z,
+        "h" => PrimitiveGate::H,
+        "t" => PrimitiveGate::T,
+        _ => unimplemented!()
     };
     Ok((input, gate))
 }
@@ -153,8 +187,6 @@ pub fn spaces_and_endlines(input: &str) -> IResult<&str, (), VerboseError<&str>>
 mod tests {
     use super::*;
     use crate::hir::PrimitiveGate;
-    use nom::branch::alt;
-    use nom::combinator::map_res;
 
     #[test]
     fn parse_indexed_array_test() {
@@ -190,11 +222,30 @@ mod tests {
     }
 
     #[test]
+    fn parse_rz_test() {
+        let input = "rz(-0.15)";
+        let (_, gate) = parse_gate(input).unwrap();
+        match gate {
+            PrimitiveGate::Rz(theta) => {
+                assert!((theta - (-0.15)).abs() < 1e9);
+            },
+            _ => assert!(false)
+        }
+    }
+
+    #[test]
     fn parse_measure_test() {
         let input = "measure q[0] -> c[0]";
         let (_, e) = parse_measure(input).unwrap();
         assert_eq!(e.args.len(), 1);
         assert_eq!(e.dst, "c0");
         assert_eq!(e.args[0], "q0");
+    }
+
+    #[test]
+    fn parse_header_test() {
+        let input = "OPENQASM 2.0;\ninclude \"qelib1.inc\";\n";
+        let (input, _) = parse_header(input).unwrap();
+        assert_eq!(input, "");
     }
 }

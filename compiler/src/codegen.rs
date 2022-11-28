@@ -175,13 +175,7 @@ fn route_telegates(
                             }
                         }
                     },
-                    hir::PrimitiveGate::X
-                    | hir::PrimitiveGate::Y
-                    | hir::PrimitiveGate::Z
-                    | hir::PrimitiveGate::H
-                    | hir::PrimitiveGate::T
-                    | hir::PrimitiveGate::Tdg
-                    | hir::PrimitiveGate::S => {
+                    gate => {
                         let pos = allocator.current_pos(&args[0]);
                         res[pos as usize].push(inquir::Expr::from(inquir::ApplyExpr { gate: gate.into(), args, ctrl: None }));
                     },

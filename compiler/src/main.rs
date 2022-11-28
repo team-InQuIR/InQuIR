@@ -50,7 +50,7 @@ fn main() {
     let args = Args::parse();
     println!("config: {}", args.config);
     let config = Configuration::from_json(args.config);
-    println!("{:?}", config);
+    //println!("{:?}", config);
 
     let source = fs::read_to_string(&args.input).unwrap();
     let hir_exps = qasm2::parse(&source).unwrap();

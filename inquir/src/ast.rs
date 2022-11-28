@@ -4,7 +4,7 @@ use std::fmt;
 
 pub type ProcessorId = u32;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Skip,
 
@@ -52,7 +52,7 @@ pub enum Expr {
     Parallel(Vec<Expr>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum System {
     /// a located expression `[e]p`.
     Located(LocExpr),
@@ -184,7 +184,7 @@ pub struct RCXTExpr {
     pub uid: u32, // annocation for compilers
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ApplyExpr {
     pub gate: PrimitiveGate,
     pub args: Vec<String>,
@@ -197,13 +197,13 @@ pub struct MeasureExpr {
     pub args: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LocExpr {
     pub p: ProcessorId,
     pub exps: Vec<Expr>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum PrimitiveGate {
     X,
     Y,
@@ -213,6 +213,7 @@ pub enum PrimitiveGate {
     Tdg,
     CX,
     RCX, // Remote CX
+    Rz(f64), // Rotate Z. (TODO: this gate will be removed in future.)
 }
 
 impl fmt::Display for Expr {
@@ -278,6 +279,7 @@ impl fmt::Display for PrimitiveGate {
             PrimitiveGate::Tdg => write!(f, "Tdg"),
             PrimitiveGate::CX => write!(f, "CX"),
             PrimitiveGate::RCX => write!(f, "RCX"),
+            PrimitiveGate::Rz(r) => write!(f, "Rz({})", r),
         }
     }
 }

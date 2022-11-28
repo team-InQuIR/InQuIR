@@ -1,4 +1,4 @@
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Ret,
 
@@ -36,7 +36,7 @@ pub struct InitExpr {
     pub dst: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ApplyExpr {
     pub gate: PrimitiveGate,
     pub args: Vec<String>,
@@ -49,7 +49,7 @@ pub struct MeasureExpr {
     pub args: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum PrimitiveGate {
     X,
     Y,
@@ -59,6 +59,7 @@ pub enum PrimitiveGate {
     Tdg,
     S,
     CX,
+    Rz(f64),
 }
 
 impl From<PrimitiveGate> for inquir::PrimitiveGate {
@@ -71,6 +72,7 @@ impl From<PrimitiveGate> for inquir::PrimitiveGate {
             PrimitiveGate::T => inquir::PrimitiveGate::T,
             PrimitiveGate::Tdg => inquir::PrimitiveGate::Tdg,
             PrimitiveGate::CX => inquir::PrimitiveGate::CX,
+            PrimitiveGate::Rz(theta) => inquir::PrimitiveGate::Rz(theta),
             PrimitiveGate::S => unimplemented!(),
         }
     }
