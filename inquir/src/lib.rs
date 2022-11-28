@@ -1,4 +1,5 @@
 pub mod ast;
+pub mod bexp;
 pub mod metrics;
 
 pub use ast::{
@@ -18,3 +19,4 @@ pub use ast::{
     PrimitiveGate,
 };
 
+pub use bexp::BExpr;

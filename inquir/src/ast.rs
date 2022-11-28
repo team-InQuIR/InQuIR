@@ -1,3 +1,4 @@
+use crate::bexp::BExpr;
 use std::convert::From;
 use std::fmt;
 
@@ -147,12 +148,14 @@ pub struct EntSwapExpr {
 pub struct QSendExpr {
     pub arg: String,
     pub ent: String,
+    pub uid: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QRecvExpr {
     pub dst: String,
     pub ent: String,
+    pub uid: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -171,18 +174,21 @@ pub struct RecvExpr {
 pub struct RCXCExpr {
     pub arg: String,
     pub ent: String,
+    pub uid: u32, // annotation for compilers
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RCXTExpr {
     pub arg: String,
     pub ent: String,
+    pub uid: u32, // annocation for compilers
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApplyExpr {
     pub gate: PrimitiveGate,
     pub args: Vec<String>,
+    pub ctrl: Option<BExpr>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -212,22 +218,28 @@ pub enum PrimitiveGate {
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Expr::Skip => write!(f, "skip;"),
-            Expr::GenEnt(GenEntExpr { label, partner }) => write!(f, "{} = genEnt via {};", label, partner),
-            Expr::EntSwap(EntSwapExpr { arg1, arg2 }) => write!(f, "entSwap {} {};", arg1, arg2),
-            Expr::Init(InitExpr { dst }) => write!(f, "{} = init();", dst),
-            Expr::Free(FreeExpr { arg }) => write!(f, "free {};", arg),
-            Expr::QSend(QSendExpr { arg, ent }) => write!(f, "qsend {} via {};", arg, ent),
-            Expr::QRecv(QRecvExpr { dst, ent }) => write!(f, "{} = qrecv via {};", dst, ent),
-            Expr::Send(SendExpr { ch, data }) => write!(f, "send {} via {};", data, ch),
-            Expr::Recv(RecvExpr { ch, data }) => write!(f, "{} = recv via {};", data, ch),
-            Expr::RCXC(RCXCExpr { arg, ent }) => write!(f, "rcxc {} via {};", arg, ent),
-            Expr::RCXT(RCXTExpr { arg, ent }) => write!(f, "rcxt {} via {};", arg, ent),
-            Expr::Apply(ApplyExpr { gate, args }) => write!(f, "{} {:?};", gate, args),
+            Expr::Skip => write!(f, "skip"),
+            Expr::GenEnt(GenEntExpr { label, partner }) => write!(f, "{} = genEnt via {}", label, partner),
+            Expr::EntSwap(EntSwapExpr { arg1, arg2 }) => write!(f, "entSwap {} {}", arg1, arg2),
+            Expr::Init(InitExpr { dst }) => write!(f, "{} = init()", dst),
+            Expr::Free(FreeExpr { arg }) => write!(f, "free {}", arg),
+            Expr::QSend(QSendExpr { arg, ent, uid: _ }) => write!(f, "qsend {} via {}", arg, ent),
+            Expr::QRecv(QRecvExpr { dst, ent, uid: _ }) => write!(f, "{} = qrecv via {}", dst, ent),
+            Expr::Send(SendExpr { ch, data }) => write!(f, "send {} via {}", data, ch),
+            Expr::Recv(RecvExpr { ch, data }) => write!(f, "{} = recv via {}", data, ch),
+            Expr::RCXC(RCXCExpr { arg, ent, uid: _ }) => write!(f, "rcxc {} via {}", arg, ent),
+            Expr::RCXT(RCXTExpr { arg, ent, uid: _ }) => write!(f, "rcxt {} via {}", arg, ent),
+            Expr::Apply(ApplyExpr { gate, args, ctrl }) => {
+                if let Some(b) = ctrl {
+                    write!(f, "{} {:?} ctrl {}", gate, args, b)
+                } else {
+                    write!(f, "{} {:?}", gate, args)
+                }
+            },
             Expr::Measure(MeasureExpr { dst, args }) => write!(f, "{} = measure {:?}", dst, args),
             Expr::Parallel(es) => {
                 let s: Vec<String> = es.iter().map(|e| format!("{}", e)).collect();
-                let s = s.join(" | ") + ";";
+                let s = s.join(" | ");
                 write!(f, "{}", s)
             },
         }
@@ -241,7 +253,7 @@ impl fmt::Display for System {
                 let mut s = String::new();
                 s += format!("{} {{\n", p).as_str();
                 exps.iter().for_each(|e| {
-                    s += format!("  {}\n", e).as_str();
+                    s += format!("  {};\n", e).as_str();
                 });
                 s += "\n}";
                 write!(f, "{}", s)

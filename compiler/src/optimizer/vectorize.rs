@@ -1,13 +1,13 @@
 use inquir::{
     ProcessorId,
-    Expr, GenEntExpr, EntSwapExpr, QSendExpr, QRecvExpr, RCXCExpr, RCXTExpr,
+    Expr, FreeExpr, GenEntExpr, EntSwapExpr, QSendExpr, QRecvExpr, RCXCExpr, RCXTExpr,
     System, LocExpr
 };
 use crate::{
     arch::Configuration,
     dependency_graph::DependencyGraphBuilder,
 };
-use std::collections::{VecDeque, HashMap};
+use std::collections::{VecDeque, HashMap, HashSet};
 
 pub fn vectorize(s: System, config: &Configuration) -> System {
     let n = config.node_size();
@@ -39,9 +39,19 @@ pub fn vectorize(s: System, config: &Configuration) -> System {
                         nxt_que.push_back(i);
                         continue;
                     } else {
-                        capacity[s][t] = capacity[s][t] - 1;
+                        capacity[s][t] -= 1;
                         current_partners[s].insert(label, t);
                     }
+                },
+                Expr::Free(FreeExpr { arg }) => {
+                    let s = *p as usize;
+                    if current_partners[s].contains_key(&arg) { // entanglements
+                        let t = current_partners[s][&arg];
+                        capacity[s][t] += 1;
+                        current_partners[s].remove(arg);
+                    }
+                    // It is not necessary to output the free instructions here.
+                    continue;
                 },
                 Expr::Parallel(_) => unimplemented!(),
                 _ => {},
@@ -68,10 +78,10 @@ pub fn vectorize(s: System, config: &Configuration) -> System {
                         current_partners[p].remove(arg1);
                         current_partners[p].remove(arg2);
                     },
-                    Expr::QSend(QSendExpr { arg: _, ent })
-                    | Expr::QRecv(QRecvExpr { dst: _, ent })
-                    | Expr::RCXC(RCXCExpr { arg: _, ent })
-                    | Expr::RCXT(RCXTExpr { arg: _, ent }) => {
+                    Expr::QSend(QSendExpr { arg: _, ent, uid: _ })
+                    | Expr::QRecv(QRecvExpr { dst: _, ent, uid: _ })
+                    | Expr::RCXC(RCXCExpr { arg: _, ent, uid: _ })
+                    | Expr::RCXT(RCXTExpr { arg: _, ent, uid: _ }) => {
                         let t = current_partners[p][ent];
                         capacity[p][t] += 1;
                         current_partners[p].remove(ent);
