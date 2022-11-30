@@ -7,12 +7,14 @@ use crate::{
     arch::Configuration,
     dependency_graph::DependencyGraphBuilder,
 };
-use std::collections::{VecDeque, HashMap, HashSet};
+use std::collections::{VecDeque, HashMap};
+use indicatif::ProgressBar;
 
 pub fn vectorize(s: System, config: &Configuration) -> System {
     let n = config.node_size();
     let builder = DependencyGraphBuilder::new();
     let dep_g = builder.build(s);
+    let pb = ProgressBar::new(dep_g.node_count() as u64);
 
     let mut que = VecDeque::new();
     let mut in_deg: Vec<_> = (0..dep_g.node_count()).map(|i| dep_g.incoming_edges(i).len()).collect();
@@ -25,6 +27,7 @@ pub fn vectorize(s: System, config: &Configuration) -> System {
     let mut current_partners = vec![HashMap::new(); n];
     let mut res = vec![Vec::new(); config.node_size()];
     while que.len() > 0 {
+        let mut processed_count = 0;
         let mut nxt_que = VecDeque::new();
         let mut tmp = vec![Vec::new(); n];
         while let Some(i) = que.pop_front() {
@@ -50,8 +53,6 @@ pub fn vectorize(s: System, config: &Configuration) -> System {
                         capacity[s][t] += 1;
                         current_partners[s].remove(arg);
                     }
-                    // It is not necessary to output the free instructions here.
-                    continue;
                 },
                 Expr::Parallel(_) => unimplemented!(),
                 _ => {},
@@ -59,7 +60,7 @@ pub fn vectorize(s: System, config: &Configuration) -> System {
             tmp[*p as usize].push(e.clone());
             v.outgoing().iter().for_each(|&eidx| {
                 let e = dep_g.edge(eidx);
-                in_deg[e.target()] = in_deg[e.target()] - 1;
+                in_deg[e.target()] -= 1;
                 if in_deg[e.target()] == 0 {
                     nxt_que.push_back(e.target());
                 }
@@ -91,6 +92,8 @@ pub fn vectorize(s: System, config: &Configuration) -> System {
                 }
             });
 
+            processed_count += exps.len();
+
             // parallelize
             if exps.len() > 0 {
                 let e = if exps.len() > 1 {
@@ -103,7 +106,10 @@ pub fn vectorize(s: System, config: &Configuration) -> System {
         });
 
         que = nxt_que;
+        pb.inc(processed_count as u64);
     }
+
+    pb.finish_with_message("Done vectorization");
 
     let located_exps: Vec<_> = res.into_iter().enumerate().filter_map(|(p, exps)| {
         if exps.len() == 0 {

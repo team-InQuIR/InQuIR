@@ -1,6 +1,5 @@
 pub mod ast;
 pub mod bexp;
-pub mod metrics;
 
 pub use ast::{
     ProcessorId,

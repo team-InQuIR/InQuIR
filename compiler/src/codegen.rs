@@ -187,6 +187,9 @@ fn route_telegates(
                 // TODO: add measure kind
                 res[pos as usize].push(inquir::Expr::from(inquir::MeasureExpr { dst: e.dst, args: e.args }));
             },
+            hir::Expr::Barrier(_) => {
+                // TODO: Currently, this compiler ignore all barriers.
+            },
         }
     }
 

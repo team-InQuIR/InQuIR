@@ -4,8 +4,8 @@ use inqcc::{
     codegen::codegen,
     codegen::allocation::{NaiveNodeAllocator, NodeAllocator},
     codegen::always_rcx::AlwaysRemoteAllocator,
+    metrics::Metrics,
 };
-use inquir::metrics::Metrics;
 use inquir::System;
 
 use std::fs;
@@ -41,9 +41,15 @@ struct Args {
     metrics: bool,
 }
 
-fn output_to_inquir_file(filename: String, program: &System) -> Result<(), std::io::Error> {
+fn output_to_inquir_file(filename: &String, program: &System) -> Result<(), std::io::Error> {
     let mut file = fs::File::create(filename)?;
     write!(file, "{}", program)
+}
+
+fn output_metrics(filename: &String, metrics: &Metrics) -> Result<(), std::io::Error> {
+    let serialized = serde_json::to_string(&metrics).unwrap();
+    let mut file = fs::File::create(filename)?;
+    write!(file, "{}", serialized)
 }
 
 fn main() {
@@ -67,12 +73,15 @@ fn main() {
     } else {
         Path::new(&args.input).file_stem().unwrap().to_str().unwrap().to_owned() + ".inq"
     };
-    output_to_inquir_file(output_filename, &res).unwrap();
+    output_to_inquir_file(&output_filename, &res).unwrap();
 
     if args.metrics {
-        let metrics = Metrics::new(&res);
+        let metrics = Metrics::new(&res, &config);
         println!("Metrics:");
-        println!("  Communication depth: {}", metrics.e_depth());
-        println!("  Communication count: {}", metrics.e_count());
+        println!("  E-depth: {}", metrics.e_depth());
+        println!("  E-count: {}", metrics.e_count());
+        println!("  C-depth: {}", metrics.c_depth());
+        println!("  C-count: {}", metrics.c_count());
+        output_metrics(&(output_filename + ".json"), &metrics).unwrap();
     }
 }

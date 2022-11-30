@@ -3,6 +3,7 @@ use crate::hir::ast::{
     InitExpr,
     ApplyExpr,
     MeasureExpr,
+    BarrierExpr,
     MeasureKind,
     PrimitiveGate
 };
@@ -23,17 +24,19 @@ use nom::{
     },
     combinator::{opt, map_res},
     error::VerboseError,
-    multi::{separated_list0, separated_list1},
+    multi::{many1, separated_list0, separated_list1},
     sequence::{
         tuple,
         delimited,
         preceded,
+        terminated,
     },
     number::complete::double,
 };
 
 #[derive(Debug)]
 pub enum Error<'a> {
+    Unexpected(&'a str),
     Nom(nom::Err<VerboseError<&'a str>>),
 }
 
@@ -46,17 +49,16 @@ impl<'a> From<nom::Err<VerboseError<&'a str>>> for Error<'a> {
 pub fn parse(input: &str) -> Result<Vec<Expr>, Error> {
     let (input, _) = parse_header(input)?;
     let (input, _) = spaces_and_endlines(input)?;
-    let (_, exps) = separated_list0(
-        preceded(char(';'), spaces_and_endlines),
-        alt((
-            map_res(parse_apply, |e| -> Result<_> { Ok(vec![Expr::from(e)]) }),
-            map_res(parse_reg_decl, |inits| -> Result<_> {
-                Ok(inits.into_iter().map(|e| Expr::from(e)).collect())
-            }),
-            map_res(parse_measure, |e| -> Result<_> { Ok(vec![Expr::from(e)]) })
-        )))(input)?;
+    let (input, exps) = many1(terminated(
+        parse_stmt,
+        tuple((tag(";"), spaces_and_endlines))))(input)?;
+    let (rest, _) = spaces_and_endlines(input)?;
 
-    Ok(exps.concat())
+    if rest == "" {
+        Ok(exps.concat())
+    } else {
+        Err(Error::Unexpected(rest))
+    }
 }
 
 pub fn parse_header(input: &str) -> IResult<&str, (), VerboseError<&str>> {
@@ -70,9 +72,22 @@ pub fn parse_header(input: &str) -> IResult<&str, (), VerboseError<&str>> {
 fn parse_include(input: &str) -> IResult<&str, (), VerboseError<&str>> {
     let (input, _) = tag("include")(input)?;
     let (input, _) = spaces_and_endlines(input)?;
-    let (input, _) = take_until("\n")(input)?; // TODO?
+    let (input, _) = preceded(take_until(";"), tag(";"))(input)?; // TODO?
     let (input, _) = spaces_and_endlines(input)?;
     Ok((input, ()))
+}
+
+fn parse_stmt(input: &str) -> IResult<&str, Vec<Expr>, VerboseError<&str>> {
+    let (input, e) = alt((
+        map_res(parse_reg_decl, |inits| -> Result<_> {
+            Ok(inits.into_iter().map(|e| Expr::from(e)).collect())
+        }),
+        map_res(parse_apply, |e| -> Result<_> { Ok(vec![Expr::from(e)]) }),
+        map_res(parse_measure, |e| -> Result<_> { Ok(vec![Expr::from(e)]) }),
+        map_res(parse_barrier, |e| -> Result<_> { Ok(vec![e]) })
+    ))(input)?;
+
+    Ok((input, e))
 }
 
 pub fn parse_reg_decl(input: &str) -> IResult<&str, Vec<InitExpr>, VerboseError<&str>> {
@@ -104,7 +119,7 @@ pub fn parse_gate_cx(input: &str) -> IResult<&str, PrimitiveGate, VerboseError<&
 }
 
 pub fn parse_gate_rz(input: &str) -> IResult<&str, PrimitiveGate, VerboseError<&str>> {
-    let (input, _) = tag("rz")(input)?;
+    let (input, _) = alt((tag("rz"), tag("u1")))(input)?;
     let (input, theta) = delimited(tag("("), double, tag(")"))(input)?;
     Ok((input, PrimitiveGate::Rz(theta)))
 }
@@ -130,6 +145,7 @@ fn parse_other_gates(input: &str) -> IResult<&str, PrimitiveGate, VerboseError<&
         tag("x"),
         tag("z"),
         tag("h"),
+        tag("tdg"), // Be careful to the order of 'tdg' and 't'.
         tag("t"),
     ))(input)?;
     let gate = match name {
@@ -137,6 +153,7 @@ fn parse_other_gates(input: &str) -> IResult<&str, PrimitiveGate, VerboseError<&
         "z" => PrimitiveGate::Z,
         "h" => PrimitiveGate::H,
         "t" => PrimitiveGate::T,
+        "tdg" => PrimitiveGate::Tdg,
         _ => unimplemented!()
     };
     Ok((input, gate))
@@ -149,6 +166,14 @@ pub fn parse_measure(input: &str) -> IResult<&str, MeasureExpr, VerboseError<&st
     let (input, _) = delimited(spaces_and_endlines, tag("->"), spaces_and_endlines)(input)?;
     let (input, dst) = parse_argument(input)?;
     Ok((input, MeasureExpr { kind: MeasureKind::Z, dst, args }))
+}
+
+fn parse_barrier(input: &str) -> IResult<&str, Expr, VerboseError<&str>> {
+    let (input, _) = tag("barrier")(input)?;
+    let (input, _) = spaces_and_endlines(input)?;
+    let (input, args) = parse_arguments(input)?;
+
+    Ok((input, Expr::Barrier(BarrierExpr { args })))
 }
 
 pub fn parse_argument(input: &str) -> IResult<&str, String, VerboseError<&str>> {
@@ -213,12 +238,13 @@ mod tests {
     }
 
     #[test]
-    fn parse_gate_u3_test() {
+    fn parse_gates() {
         check_gate!("u(pi/2,0,pi)", PrimitiveGate::H);
         check_gate!("u(0,0,pi/4)", PrimitiveGate::T);
         check_gate!("u(0,0,-pi/4)", PrimitiveGate::Tdg);
         check_gate!("u(pi,0,pi)", PrimitiveGate::X);
         check_gate!("cx", PrimitiveGate::CX);
+        check_gate!("tdg", PrimitiveGate::Tdg);
     }
 
     #[test]

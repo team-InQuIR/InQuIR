@@ -150,7 +150,7 @@ impl DependencyGraphBuilder {
                 }
                 self.last_node_id.insert(dst, id);
             },
-            Expr::Parallel(_) => todo!(), // Really?: es.into_iter().for_each(|e| self.add_exp(p, e)),
+            Expr::Parallel(es) => es.into_iter().for_each(|e| self.add_exp(p, e)),
         }
     }
 

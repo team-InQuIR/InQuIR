@@ -10,6 +10,9 @@ pub enum Expr {
 
     /// `x = meas(x1, .., xn);`
     Measure(MeasureExpr),
+
+    /// `barrier x1, .., xn`
+    Barrier(BarrierExpr),
 }
 
 
@@ -46,6 +49,11 @@ pub struct ApplyExpr {
 pub struct MeasureExpr {
     pub kind: MeasureKind,
     pub dst: String,
+    pub args: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BarrierExpr {
     pub args: Vec<String>,
 }
 

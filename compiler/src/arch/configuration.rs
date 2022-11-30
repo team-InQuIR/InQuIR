@@ -1,7 +1,6 @@
 use std::fs;
 use graph::graph::{UnGraph, NodeIndex};
 use serde::{
-    de::Error,
     Deserialize,
     Deserializer,
 };
