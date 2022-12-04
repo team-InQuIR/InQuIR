@@ -22,6 +22,9 @@ pub fn quasi_parallel(s: System) -> System {
         while cur_node_idx < g.node_count() { // The number of nodes can be increased.
             let node1  = cur_node_idx;
             cur_node_idx += 1;
+            if !g.node(node1).weight().1.is_app() {
+                continue;
+            }
             let to_nodes: Vec<_> = g.outgoing_edges(node1).iter().map(|&id| g.edge(id).target()).collect();
             for node2 in to_nodes {
                 let (p, e1) = g.node(node1).weight();
