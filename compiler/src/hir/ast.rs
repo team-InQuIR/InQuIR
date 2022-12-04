@@ -81,7 +81,7 @@ impl From<PrimitiveGate> for inquir::PrimitiveGate {
             PrimitiveGate::Tdg => inquir::PrimitiveGate::Tdg,
             PrimitiveGate::CX => inquir::PrimitiveGate::CX,
             PrimitiveGate::Rz(theta) => inquir::PrimitiveGate::Rz(theta),
-            PrimitiveGate::S => unimplemented!(),
+            PrimitiveGate::S => inquir::PrimitiveGate::S,
         }
     }
 }

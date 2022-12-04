@@ -5,6 +5,7 @@ use inqcc::{
     codegen::allocation::{NaiveNodeAllocator, NodeAllocator},
     codegen::always_rcx::AlwaysRemoteAllocator,
     metrics::Metrics,
+    dependency_graph::DependencyGraphBuilder,
 };
 use inquir::System;
 
@@ -38,7 +39,15 @@ struct Args {
     strategy: Strategy,
 
     #[clap(long)]
-    metrics: bool,
+    metrics: Option<String>,
+
+    /// Enable quasi-parallelism.
+    #[clap(long)]
+    quasi_para: bool,
+
+    /// Where a dependency graph is output.
+    #[clap(long)]
+    depends: Option<String>,
 }
 
 fn output_to_inquir_file(filename: &String, program: &System) -> Result<(), std::io::Error> {
@@ -67,21 +76,27 @@ fn main() {
         Strategy::AlwaysRemote => Box::new(AlwaysRemoteAllocator::new(&hir_exps, &config)),
     };
 
-    let res = codegen(hir_exps, &config, allocator);
+    let res = codegen(hir_exps, &config, allocator, args.quasi_para);
     let output_filename = if let Some(filename) = args.output {
         filename
     } else {
         Path::new(&args.input).file_stem().unwrap().to_str().unwrap().to_owned() + ".inq"
     };
     output_to_inquir_file(&output_filename, &res).unwrap();
+    if let Some(depends_path) = args.depends {
+        let mut file = std::fs::File::create(depends_path).unwrap();
+        let builder = DependencyGraphBuilder::new();
+        let graphviz = builder.build(res.clone()).as_graphviz();
+        write!(file, "{}", graphviz).unwrap();
+    };
 
-    if args.metrics {
+    if let Some(met_path) = args.metrics {
         let metrics = Metrics::new(&res, &config);
         println!("Metrics:");
         println!("  E-depth: {}", metrics.e_depth());
         println!("  E-count: {}", metrics.e_count());
         println!("  C-depth: {}", metrics.c_depth());
         println!("  C-count: {}", metrics.c_count());
-        output_metrics(&(output_filename + ".json"), &metrics).unwrap();
+        output_metrics(&met_path, &metrics).unwrap();
     }
 }

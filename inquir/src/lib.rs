@@ -18,4 +18,4 @@ pub use ast::{
     PrimitiveGate,
 };
 
-pub use bexp::BExpr;
+pub use bexp::{BExpr, BinOp};

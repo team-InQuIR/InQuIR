@@ -43,10 +43,10 @@ impl Decomposer {
                 res.push(Expr::Measure(MeasureExpr { dst: meas_var.clone(), args: vec![ent.clone()] }));
                 res.push(Expr::Free(FreeExpr { arg: ent }));
                 let (ch_name1, ch_name2) = self.get_ch_names(uid, false);
-                res.push(Expr::Send(SendExpr { ch: ch_name1, data: meas_var }));
+                res.push(Expr::Send(SendExpr { ch: ch_name1, data: BExpr::Var(meas_var) }));
                 let recv_var = self.fresh_var_id();
                 res.push(Expr::Recv(RecvExpr { ch: ch_name2, data: recv_var.clone() }));
-                let ctrl = BExpr::Not(Box::new(BExpr::Var(recv_var)));
+                let ctrl = BExpr::Var(recv_var);
                 res.push(Expr::Apply(ApplyExpr { gate: PrimitiveGate::Z, args: vec![arg], ctrl: Some(ctrl) }));
                 res
             },
@@ -58,7 +58,7 @@ impl Decomposer {
                 res.push(Expr::Measure(MeasureExpr { dst: meas_var.clone(), args: vec![ent.clone()] }));
                 res.push(Expr::Free(FreeExpr { arg: ent }));
                 let (ch_name1, ch_name2) = self.get_ch_names(uid, false);
-                res.push(Expr::Send(SendExpr { ch: ch_name1, data: meas_var }));
+                res.push(Expr::Send(SendExpr { ch: ch_name1, data: BExpr::Var(meas_var) }));
                 let recv_var = self.fresh_var_id();
                 res.push(Expr::Recv(RecvExpr { ch: ch_name2, data: recv_var.clone() }));
                 let ctrl = BExpr::Var(recv_var);
@@ -75,8 +75,8 @@ impl Decomposer {
                 res.push(Expr::Measure(MeasureExpr { dst: x2.clone(), args: vec![ent.clone()] }));
                 res.push(Expr::Free(FreeExpr { arg: ent }));
                 let (ch_name1, ch_name2) = self.get_ch_names(uid, true);
-                res.push(Expr::Send(SendExpr { ch: ch_name1, data: x1 }));
-                res.push(Expr::Send(SendExpr { ch: ch_name2, data: x2 }));
+                res.push(Expr::Send(SendExpr { ch: ch_name1, data: BExpr::Var(x1) }));
+                res.push(Expr::Send(SendExpr { ch: ch_name2, data: BExpr::Var(x2) }));
                 res
             },
             Expr::QRecv(QRecvExpr { dst, ent, uid }) => {

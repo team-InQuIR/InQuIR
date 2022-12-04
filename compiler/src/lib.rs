@@ -4,4 +4,4 @@ pub mod codegen;
 pub mod metrics;
 pub mod parser;
 pub mod optimizer;
-mod dependency_graph;
+pub mod dependency_graph;

@@ -43,14 +43,21 @@ fn construct_shortest_path(
     path.into_iter().rev().collect()
 }
 
-pub fn codegen(exps: Vec<hir::Expr>, config: &Configuration, allocator: Box<dyn NodeAllocator>) -> inquir::System {
+pub fn codegen(exps: Vec<hir::Expr>, config: &Configuration, allocator: Box<dyn NodeAllocator>, quasi: bool) -> inquir::System {
     let mut decomposer = Decomposer::new();
     let s = route_telegates(exps, config, allocator);
     println!("[codegen] finish routing.");
     let s = decomposer.decompose(s);
     println!("[codegen] finish decomposition.");
-    let s = optimizer::vectorize(s, config);
-    println!("[codegen] finish vectorization.");
+    let s = if quasi {
+        let s = optimizer::quasi_parallel(s);
+        println!("[codegen] finish quasi-parallelization.");
+        s
+    } else {
+        s
+    };
+    //let s = optimizer::vectorize(s, config);
+    //println!("[codegen] finish vectorization.");
     s
 }
 
@@ -66,6 +73,11 @@ fn route_telegates(
         res
     };
     let mut tele_uid = 0;
+    let mut fresh_tele_uid = || {
+        let res = tele_uid;
+        tele_uid += 1;
+        res
+    };
 
     let mut res = vec![vec![]; config.node_size()];
     let prevs = build_all_pair_shortest_path(config.connections());
@@ -95,17 +107,18 @@ fn route_telegates(
                                     let pos2 = pos2 as NodeIndex;
                                     let path = construct_shortest_path(&prevs[pos1], pos1, pos2);
                                     let ent_ids: Vec<_> = (0..path.len()*2-2).map(|_| fresh_ent_id()).collect();
+                                    let uids: Vec<_> = (0..path.len()-1).map(|_| fresh_tele_uid()).collect();
                                     // generate entanglements
                                     for i in 0..path.len() {
                                         if i >= 1 {
                                             let label = ent_ids[2*i-1].clone();
                                             let partner = path[i - 1] as inquir::ProcessorId;
-                                            res[path[i]].push(inquir::Expr::from(inquir::GenEntExpr { label, partner }));
+                                            res[path[i]].push(inquir::Expr::from(inquir::GenEntExpr { label, partner, uid: uids[i - 1] }));
                                         }
                                         if i + 1 < path.len() {
                                             let label = ent_ids[2*i].clone();
                                             let partner = path[i + 1] as inquir::ProcessorId;
-                                            res[path[i]].push(inquir::Expr::from(inquir::GenEntExpr { label, partner }));
+                                            res[path[i]].push(inquir::Expr::from(inquir::GenEntExpr { label, partner, uid: uids[i] }));
                                         }
                                     }
                                     // perform entanglement swapping
@@ -114,17 +127,17 @@ fn route_telegates(
                                         let arg2 = ent_ids[2*i].clone();
                                         res[path[i]].push(inquir::Expr::from(inquir::EntSwapExpr { arg1, arg2 }));
                                     }
+                                    let uid = fresh_tele_uid();
                                     res[pos1].push(inquir::Expr::from(inquir::RCXCExpr {
                                         arg: args[0].clone(),
                                         ent: ent_ids[0].clone(),
-                                        uid: tele_uid,
+                                        uid,
                                     }));
                                     res[pos2].push(inquir::Expr::from(inquir::RCXTExpr {
                                         arg: args[1].clone(),
                                         ent: ent_ids[ent_ids.len()-1].clone(),
-                                        uid: tele_uid,
+                                        uid,
                                     }));
-                                    tele_uid += 1;
                                 }
                             },
                             allocation::RemoteOp::Move(path) => {
@@ -133,17 +146,18 @@ fn route_telegates(
                                     let to = to as usize;
                                     let path = construct_shortest_path(&prevs[from], from, to);
                                     let ent_ids: Vec<_> = (0..path.len()*2-2).map(|_| fresh_ent_id()).collect();
+                                    let uids: Vec<_> = (0..path.len()-1).map(|_| fresh_tele_uid()).collect();
                                     // generate entanglements
                                     for i in 0..path.len() {
                                         if i >= 1 {
                                             let label = ent_ids[2*i-1].clone();
                                             let partner = path[i - 1] as inquir::ProcessorId;
-                                            res[path[i]].push(inquir::Expr::from(inquir::GenEntExpr { label, partner }));
+                                            res[path[i]].push(inquir::Expr::from(inquir::GenEntExpr { label, partner, uid: uids[i - 1] }));
                                         }
                                         if i + 1 < path.len() {
                                             let label = ent_ids[2*i].clone();
                                             let partner = path[i + 1] as inquir::ProcessorId;
-                                            res[path[i]].push(inquir::Expr::from(inquir::GenEntExpr { label, partner }));
+                                            res[path[i]].push(inquir::Expr::from(inquir::GenEntExpr { label, partner, uid: uids[i] }));
                                         }
                                     }
                                     // perform entanglement swapping
@@ -152,6 +166,7 @@ fn route_telegates(
                                         let arg2 = ent_ids[2*i].clone();
                                         res[path[i]].push(inquir::Expr::from(inquir::EntSwapExpr { arg1, arg2 }));
                                     }
+                                    let tele_uid = fresh_tele_uid();
                                     res[from].push(inquir::Expr::from(inquir::QSendExpr {
                                         arg: id.clone(),
                                         ent: ent_ids[0].clone(),
@@ -162,7 +177,6 @@ fn route_telegates(
                                         ent: ent_ids[ent_ids.len()-1].clone(),
                                         uid: tele_uid,
                                     }));
-                                    tele_uid += 1;
                                 }
                                 let pos1 = allocator.current_pos(&args[0]);
                                 let pos2 = allocator.current_pos(&args[1]);

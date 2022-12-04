@@ -5,9 +5,14 @@ outdir=results
 run_qasm() {
     local target=$1
     local config=$2
-    local outfile=`basename ${target%.qasm}.inq`
+    local base=`basename ${target%.qasm}`
+    local outfile1="${base}.inq"
+    local metfile1="${base}.json"
+    local outfile2="${base}_quasi.inq"
+    local metfile2="${base}_quasi.json"
     echo "Compiling ${target}"
-    ./target/release/inqcc ${target} -o ${outdir}/${outfile} --config ${config} --strategy always-remote --metrics
+    ./target/release/inqcc ${target} -o ${outdir}/${outfile1} --config ${config} --strategy always-remote --metrics ${outdir}/${metfile1}
+    ./target/release/inqcc ${target} -o ${outdir}/${outfile2} --config ${config} --strategy always-remote --metrics ${outdir}/${metfile2} --quasi-para
 }
 
 targets=(

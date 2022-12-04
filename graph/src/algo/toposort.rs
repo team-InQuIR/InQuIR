@@ -1,18 +1,19 @@
 use crate::graph::{DiGraph, NodeIndex};
+use std::collections::VecDeque;
 
 /// Returns the topological order of the given directed acyclic graph.
 pub fn toposort<N: Clone, E: Clone>(g: &DiGraph<N, E>) -> Option<Vec<NodeIndex>> {
     let n = g.node_count();
     let mut in_deg: Vec<_> = (0..n).into_iter().map(|i| g.incoming_edges(i).len()).collect();
-    let mut s = Vec::new();
+    let mut s = VecDeque::new();
     let mut res = Vec::new();
-    in_deg.iter().enumerate().for_each(|(i, &d)| if d == 0 { s.push(i); });
-    while let Some(v) = s.pop() {
+    in_deg.iter().enumerate().for_each(|(i, &d)| if d == 0 { s.push_back(i); });
+    while let Some(v) = s.pop_front() {
         res.push(v);
         g.neighbors(v).iter().for_each(|&u| {
             in_deg[u] = in_deg[u] - 1;
             if in_deg[u] == 0 {
-                s.push(u);
+                s.push_back(u);
             }
         });
     }

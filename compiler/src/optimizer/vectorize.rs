@@ -35,7 +35,7 @@ pub fn vectorize(s: System, config: &Configuration) -> System {
             let (p, e) = v.weight();
             // check the current capacity to generate a new entanglement
             match e {
-                Expr::GenEnt(GenEntExpr { label, partner }) => {
+                Expr::GenEnt(GenEntExpr { label, partner, uid: _ }) => {
                     let s = *p as usize;
                     let t = *partner as usize;
                     if capacity[s][t] == 0 { // postpone

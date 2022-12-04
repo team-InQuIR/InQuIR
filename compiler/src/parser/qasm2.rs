@@ -147,6 +147,7 @@ fn parse_other_gates(input: &str) -> IResult<&str, PrimitiveGate, VerboseError<&
         tag("h"),
         tag("tdg"), // Be careful to the order of 'tdg' and 't'.
         tag("t"),
+        tag("s"),
     ))(input)?;
     let gate = match name {
         "x" => PrimitiveGate::X,
@@ -154,6 +155,7 @@ fn parse_other_gates(input: &str) -> IResult<&str, PrimitiveGate, VerboseError<&
         "h" => PrimitiveGate::H,
         "t" => PrimitiveGate::T,
         "tdg" => PrimitiveGate::Tdg,
+        "s" => PrimitiveGate::S,
         _ => unimplemented!()
     };
     Ok((input, gate))

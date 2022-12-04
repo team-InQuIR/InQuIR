@@ -69,7 +69,7 @@ pub fn calc_e_depth(g: &DependencyGraph, config: &Configuration) -> u32 {
         let (p, e) = g.node(idx).weight();
         let s = *p as usize;
         let is_issued = match e {
-            Expr::GenEnt(GenEntExpr { label, partner }) => {
+            Expr::GenEnt(GenEntExpr { label, partner, uid: _ }) => {
                 let t = *partner as usize;
                 if let Some(cost) = ent_pool[s][t].pop() {
                     dp[idx] = cost + 1;
@@ -138,7 +138,7 @@ fn calc_e_count_exp(e: &Expr) -> u32 {
 fn calc_c_depth(g: &DependencyGraph) -> u32 {
     let sz = g.node_count();
     let mut dp = vec![0; sz];
-    let tord = toposort(&g).unwrap();
+    let tord = toposort(g.graph_ref()).unwrap();
     for idx in tord {
         let (_, exp) = g.node(idx).weight();
         match exp {

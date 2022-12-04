@@ -6,8 +6,6 @@ pub type ProcessorId = u32;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
-    Skip,
-
     /// `x = init();`
     Init(InitExpr),
 
@@ -136,6 +134,7 @@ pub struct FreeExpr {
 pub struct GenEntExpr {
     pub label: String,
     pub partner: ProcessorId,
+    pub uid: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -161,7 +160,7 @@ pub struct QRecvExpr {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SendExpr {
     pub ch: String,
-    pub data: String,
+    pub data: BExpr,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -205,22 +204,60 @@ pub struct LocExpr {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum PrimitiveGate {
+    I,
     X,
     Y,
     Z,
     H,
     T,
     Tdg,
+    S,
     CX,
     RCX, // Remote CX
     Rz(f64), // Rotate Z. (TODO: this gate will be removed in future.)
 }
 
+impl Expr {
+    pub fn is_app(&self) -> bool {
+        match self {
+            Expr::Apply(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_measure(&self) -> bool {
+        match self {
+            Expr::Measure(_) => true,
+            _ => false
+        }
+    }
+
+    pub fn as_app(&self) -> Option<ApplyExpr> {
+        match self {
+            Expr::Apply(app) => Some(app.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn as_app_mut(&mut self) -> Option<&mut ApplyExpr> {
+        match self {
+            Expr::Apply(app) => Some(app),
+            _ => None,
+        }
+    }
+
+    pub fn as_measure(&self) -> Option<MeasureExpr> {
+        match self {
+            Expr::Measure(e) => Some(e.clone()),
+            _ => None,
+        }
+    }
+}
+
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Expr::Skip => write!(f, "skip"),
-            Expr::GenEnt(GenEntExpr { label, partner }) => write!(f, "{} = genEnt via {}", label, partner),
+            Expr::GenEnt(GenEntExpr { label, partner, uid: _ }) => write!(f, "{} = genEnt via {}", label, partner),
             Expr::EntSwap(EntSwapExpr { arg1, arg2 }) => write!(f, "entSwap {} {}", arg1, arg2),
             Expr::Init(InitExpr { dst }) => write!(f, "{} = init()", dst),
             Expr::Free(FreeExpr { arg }) => write!(f, "free {}", arg),
@@ -231,13 +268,19 @@ impl fmt::Display for Expr {
             Expr::RCXC(RCXCExpr { arg, ent, uid: _ }) => write!(f, "rcxc {} via {}", arg, ent),
             Expr::RCXT(RCXTExpr { arg, ent, uid: _ }) => write!(f, "rcxt {} via {}", arg, ent),
             Expr::Apply(ApplyExpr { gate, args, ctrl }) => {
+                let args_str: Vec<_> = args.iter().map(|arg| arg.clone()).collect();
+                let args_str = args_str.join(" ");
                 if let Some(b) = ctrl {
-                    write!(f, "{} {:?} ctrl {}", gate, args, b)
+                    write!(f, "{} {} ctrl {}", gate, args_str, b)
                 } else {
-                    write!(f, "{} {:?}", gate, args)
+                    write!(f, "{} {}", gate, args_str)
                 }
             },
-            Expr::Measure(MeasureExpr { dst, args }) => write!(f, "{} = measure {:?}", dst, args),
+            Expr::Measure(MeasureExpr { dst, args }) => {
+                let args_str: Vec<_> = args.iter().map(|arg| arg.clone()).collect();
+                let args_str = args_str.join(" ");
+                write!(f, "{} = measure {}", dst, args_str)
+            },
             Expr::Parallel(es) => {
                 let s: Vec<String> = es.iter().map(|e| format!("{}", e)).collect();
                 let s = s.join(" | ");
@@ -271,12 +314,14 @@ impl fmt::Display for System {
 impl fmt::Display for PrimitiveGate {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            PrimitiveGate::I => write!(f, "I"),
             PrimitiveGate::X => write!(f, "X"),
             PrimitiveGate::Y => write!(f, "Y"),
             PrimitiveGate::Z => write!(f, "Z"),
             PrimitiveGate::H => write!(f, "H"),
             PrimitiveGate::T => write!(f, "T"),
             PrimitiveGate::Tdg => write!(f, "Tdg"),
+            PrimitiveGate::S => write!(f, "S"),
             PrimitiveGate::CX => write!(f, "CX"),
             PrimitiveGate::RCX => write!(f, "RCX"),
             PrimitiveGate::Rz(r) => write!(f, "Rz({})", r),

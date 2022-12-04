@@ -23,12 +23,25 @@ impl<W: Clone> Node<W> {
         &self.weight
     }
 
+    pub fn weight_mut(&mut self) -> &mut W {
+        &mut self.weight
+    }
+
     pub fn incoming(&self) -> &Vec<EdgeIndex> {
         &self.incoming
     }
 
     pub fn outgoing(&self) -> &Vec<EdgeIndex> {
         &self.outgoing
+    }
+
+    pub fn remove_edge(&mut self, eidx: EdgeIndex) {
+        if let Some(index) = self.incoming.iter().position(|&id| id == eidx) {
+            self.incoming.remove(index);
+        }
+        if let Some(index) = self.outgoing.iter().position(|&id| id == eidx) {
+            self.outgoing.remove(index);
+        }
     }
 }
 
@@ -113,6 +126,10 @@ impl<N: Clone, E: Clone, ET: EdgeType> Graph<N, E, ET> {
         &self.nodes
     }
 
+    pub fn node_weight_mut(&mut self, id: NodeIndex) -> &mut N {
+        self.nodes[id].weight_mut()
+    }
+
     pub fn edge(&self, eid: EdgeIndex) -> &Edge<E> {
         &self.edges[eid]
     }
@@ -151,6 +168,10 @@ impl<N: Clone, E: Clone, ET: EdgeType> Graph<N, E, ET> {
         }
     }
 
+    pub fn outgoing_nodes(&self, u: NodeIndex) -> Vec<NodeIndex> {
+        self.nodes[u].outgoing.iter().map(|&eidx| self.edges[eidx].target()).collect()
+    }
+
     pub fn incoming_edges(&self, u: NodeIndex) -> &Vec<EdgeIndex> {
         &self.nodes[u].incoming
     }
@@ -158,7 +179,55 @@ impl<N: Clone, E: Clone, ET: EdgeType> Graph<N, E, ET> {
     pub fn outgoing_edges(&self, u: NodeIndex) -> &Vec<EdgeIndex> {
         &self.nodes[u].outgoing
     }
+
+    pub fn update_edge(&mut self, idx: EdgeIndex, u: NodeIndex, v: NodeIndex, w: E) {
+        let old_u = self.edges[idx].source();
+        let old_v = self.edges[idx].target();
+        self.nodes[old_u].remove_edge(idx);
+        self.nodes[old_v].remove_edge(idx);
+        self.edges[idx].source = u;
+        self.edges[idx].target = v;
+        self.edges[idx].weight = w;
+        self.nodes[u].outgoing.push(idx);
+        self.nodes[v].incoming.push(idx);
+    }
 }
 
 pub type DiGraph<N, E> = Graph<N, E, Directed>;
 pub type UnGraph<N, E> = Graph<N, E, Undirected>;
+
+#[cfg(test)]
+mod tests {
+    use super::super::graph::DiGraph;
+
+    #[test]
+    fn update_edge_test() {
+        let mut g = DiGraph::<(), ()>::new();
+        g.add_node(());
+        g.add_node(());
+        g.add_node(());
+        g.add_node(());
+        g.add_edge(0, 1, ());
+        g.add_edge(1, 2, ());
+        g.add_edge(0, 2, ());
+        g.update_edge(1, 0, 3, ());
+        let ins: Vec<Vec<_>> = (0..4).map(|i| {
+            let mut v: Vec<_> = g.incoming_edges(i).iter().map(|&eidx| eidx).collect();
+            v.sort();
+            v
+        }).collect();
+        let outs: Vec<Vec<_>> = (0..4).map(|i| {
+            let mut v: Vec<_> = g.outgoing_edges(i).iter().map(|&eidx| eidx).collect();
+            v.sort();
+            v
+        }).collect();
+        assert!(ins[0].is_empty());
+        assert_eq!(ins[1], vec![0]);
+        assert_eq!(ins[2], vec![2]);
+        assert_eq!(ins[3], vec![1]);
+        assert_eq!(outs[0], vec![0, 1, 2]);
+        assert!(outs[1].is_empty());
+        assert!(outs[2].is_empty());
+        assert!(outs[3].is_empty());
+    }
+}
