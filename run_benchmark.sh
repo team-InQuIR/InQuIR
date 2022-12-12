@@ -11,8 +11,8 @@ run_qasm() {
     local outfile2="${base}_quasi.inq"
     local metfile2="${base}_quasi.json"
     echo "Compiling ${target}"
-    ./target/release/inqcc ${target} -o ${outdir}/${outfile1} --config ${config} --strategy always-remote --metrics ${outdir}/${metfile1}
-    ./target/release/inqcc ${target} -o ${outdir}/${outfile2} --config ${config} --strategy always-remote --metrics ${outdir}/${metfile2} --quasi-para
+    ./target/release/inqcc ${target} -o ${outdir}/${outfile1} --config ${config} --strategy always-remote --metrics ${outdir}/${metfile1} --depends ${outdir}/${base}.dot
+    ./target/release/inqcc ${target} -o ${outdir}/${outfile2} --config ${config} --strategy always-remote --metrics ${outdir}/${metfile2} --quasi-para --depends ${outdir}/${base}_quasi.dot
 }
 
 targets=(
