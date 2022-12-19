@@ -1,17 +1,19 @@
 use graph::graph::{DiGraph, Node, Edge, NodeIndex, EdgeIndex};
 use graph::algo::toposort;
 use inquir::{
-    ProcessorId,
+    SessionId,
+    ParticipantId,
+    Label,
     PrimitiveGate,
+    Process,
+    OpenProc, InitProc, FreeProc, GenEntProc, EntSwapProc,
+    QSendProc, QRecvProc, SendProc, RecvProc, ApplyProc, MeasureProc,
+    System, LocProc,
     Expr,
-    InitExpr, FreeExpr, GenEntExpr, EntSwapExpr,
-    QSendExpr, QRecvExpr, SendExpr, RecvExpr, ApplyExpr, MeasureExpr,
-    System, LocExpr,
-    BExpr,
 };
 use std::collections::{HashMap, BTreeMap, VecDeque};
 
-type NodeWeight = (ProcessorId, Expr);
+type NodeWeight = (ParticipantId, Process);
 type DAGNode = Node<NodeWeight>;
 type InnerGraph = DiGraph<NodeWeight, Dependency>;
 
@@ -52,7 +54,7 @@ impl DependencyGraph {
         let e = &mut self.g.node_weight_mut(idx).1;
         // TODO: Currently, this method supports to remove single qubit gates only.
         match e {
-            Expr::Apply(ref mut e) => {
+            Process::Apply(ref mut e) => {
                 if e.args.len() == 1 {
                     e.gate = PrimitiveGate::I;
                 } else {
@@ -63,11 +65,11 @@ impl DependencyGraph {
         }
     }
 
-    pub fn insert_app_after(&mut self, idx: NodeIndex, p: ProcessorId, app: ApplyExpr) -> NodeIndex {
+    pub fn insert_app_after(&mut self, idx: NodeIndex, p: ParticipantId, app: ApplyProc) -> NodeIndex {
         // TODO: currently, this method supports to insert single qubit gates only.
         assert!(app.args.len() == 1);
         let var = app.args[0].clone();
-        let new_node = self.g.add_node((p, Expr::from(app)));
+        let new_node = self.g.add_node((p, Process::Apply(app)));
         let mut to = None;
         for &eidx in self.outgoing_edges(idx) {
             if *self.edge(eidx).weight().label() == var {
@@ -84,7 +86,7 @@ impl DependencyGraph {
         new_node
     }
 
-    pub fn replace_stmt(&mut self, u: NodeIndex, exp: Expr) {
+    pub fn replace_stmt(&mut self, u: NodeIndex, exp: Process) {
         self.node_weight_mut(u).1 = exp;
     }
 
@@ -131,7 +133,7 @@ impl DependencyGraph {
 
     pub fn propagate_classical_deps(&mut self, u: NodeIndex, v: NodeIndex) {
         let cdeps1: Vec<_> = self.g.incoming_edges(u).clone().into_iter()
-            .filter(|&eidx| self.g.edge(eidx).weight().is_classical()).collect();
+            .filter(|&eidx| self.g.edge(eidx).weight().is_classical()).collect(); // TODO: Replace is_classical
         cdeps1.into_iter().for_each(|eidx| {
             let already = self.g.incoming_edges(v).iter()
                 .any(|&eidx2| self.g.edge(eidx2).weight().label() == self.g.edge(eidx).weight().label());
@@ -143,21 +145,22 @@ impl DependencyGraph {
         });
     }
 
-    pub fn replace_bexp_until_end(&mut self, idx: NodeIndex, var: &String, bexp: BExpr) {
-        let (p, e) = self.node(idx).weight();
-        let exp = match e {
-            Expr::Send(SendExpr { ch, data }) => {
-                let data = inquir::bexp::subst_bexp(data.clone(), var, bexp.clone());
-                Some(Expr::Send(SendExpr { ch: ch.clone(), data }))
+    pub fn replace_bexp_until_end(&mut self, idx: NodeIndex, var: &String, exp: Expr) {
+        // TODO: update classical dependencies?
+        let (p, proc) = self.node(idx).weight();
+        let proc = match proc {
+            Process::Send(SendProc { s, dst, data: (label, exp) }) => {
+                let exp = inquir::expr::subst_bexp(exp.clone(), var, exp.clone());
+                Some(Process::Send(SendProc { s: s.clone(), dst: *dst, data: (label.clone(), exp) }))
             },
-            Expr::Apply(ApplyExpr { gate, args, ctrl }) => {
-                let ctrl = ctrl.clone().map(|b| inquir::bexp::subst_bexp(b, var, bexp.clone()));
-                Some(Expr::Apply(ApplyExpr { gate: gate.clone(), args: args.clone(), ctrl }))
+            Process::Apply(ApplyProc { gate, args, ctrl }) => {
+                let ctrl = ctrl.clone().map(|b| inquir::expr::subst_bexp(b, var, exp.clone()));
+                Some(Process::Apply(ApplyProc { gate: gate.clone(), args: args.clone(), ctrl }))
             },
             _ => None,
         };
-        if let Some(exp) = exp {
-            *self.node_weight_mut(idx) = (*p, exp);
+        if let Some(proc) = proc {
+            *self.node_weight_mut(idx) = (*p, proc);
         } else {
             let nexts: Vec<_> = self.g.outgoing_edges(idx).iter().
                 filter_map(|&eidx| {
@@ -168,7 +171,7 @@ impl DependencyGraph {
                         None
                     }
                 }).collect();
-            nexts.into_iter().for_each(|to| self.replace_bexp_until_end(to, var, bexp.clone()));
+            nexts.into_iter().for_each(|to| self.replace_bexp_until_end(to, var, exp.clone()));
         }
     }
 
@@ -222,19 +225,19 @@ impl DependencyGraph {
             if exp.is_app() && exp.as_app().unwrap().gate == PrimitiveGate::I {
                 continue;
             }
-            let p = *p as usize;
+            let p = p.to_u32() as usize;
             while res.len() <= p {
                 res.push(Vec::new());
             }
             res[p].push(exp.clone());
         }
 
-        let ss: Vec<_> = res.into_iter().enumerate().filter_map(|(p, exps)| {
-            if exps.is_empty() {
+        let ss: Vec<_> = res.into_iter().enumerate().filter_map(|(p, procs)| {
+            if procs.is_empty() {
                 None
             } else {
-                let p = p as ProcessorId;
-                Some(System::Located(LocExpr { p, exps }))
+                let p = ParticipantId::new(p as u32);
+                Some(System::Located(LocProc { p, procs }))
             }
         }).collect();
         System::Composition(ss)
@@ -329,8 +332,9 @@ impl DependencyGraph {
 pub struct DependencyGraphBuilder {
     g: DependencyGraph,
     last_node_id: BTreeMap<String, NodeIndex>,
-    sendrecv_pair: HashMap<String, NodeIndex>,
-    gen_ent_pair: HashMap<u32, Vec<NodeIndex>>,
+    sendrecv_pair: HashMap<(SessionId, Label), NodeIndex>, // TODO: unique?
+    gen_ent_pair: HashMap<Label, Vec<NodeIndex>>,
+    session_node_id: BTreeMap<(SessionId, ParticipantId), NodeIndex>,
 }
 
 impl DependencyGraphBuilder {
@@ -340,6 +344,7 @@ impl DependencyGraphBuilder {
             last_node_id: BTreeMap::new(),
             sendrecv_pair: HashMap::new(),
             gen_ent_pair: HashMap::new(),
+            session_node_id: BTreeMap::new(),
         }
     }
 
@@ -364,109 +369,116 @@ impl DependencyGraphBuilder {
 
     fn add_system(&mut self, s: System) {
         match s {
-            System::Located(LocExpr { p, exps }) => exps.into_iter().for_each(|e| self.add_exp(p, e)),
+            System::Located(LocProc { p, procs }) => procs.into_iter().for_each(|proc| self.add_process(p, proc)),
             System::Composition(ss) => ss.into_iter().for_each(|s| self.add_system(s)),
         }
     }
 
-    fn add_exp(&mut self, p: ProcessorId, e: Expr) {
-        match e {
-            Expr::Init(InitExpr { dst }) => {
-                let id = self.g.add_node((p, Expr::Init(InitExpr { dst: dst.clone() })));
+    fn add_process(&mut self, p: ParticipantId, proc: Process) {
+        match proc {
+            Process::Open(OpenProc { id: sid, ps }) => {
+                let id = self.g.add_node((p, Process::Open(OpenProc { id: sid.clone(), ps })));
+                self.session_node_id.insert((sid, p), id);
+            },
+            Process::Init(InitProc { dst }) => {
+                let id = self.g.add_node((p, Process::Init(InitProc { dst: dst.clone() })));
                 self.last_node_id.insert(dst, id);
             },
-            Expr::Free(FreeExpr { arg }) => {
+            Process::Free(FreeProc { arg }) => {
                 let prev_id = self.last_node_id[&arg];
-                let id = self.g.add_node((p, Expr::Free(FreeExpr { arg: arg.clone() })));
+                let id = self.g.add_node((p, Process::Free(FreeProc { arg: arg.clone() })));
                 self.g.add_edge(prev_id, id, Dependency::new(arg));
             },
-            Expr::GenEnt(GenEntExpr { label, partner, uid }) => {
-                let id = self.g.add_node((p, Expr::GenEnt(GenEntExpr { label: label.clone(), partner, uid })));
-                if !self.gen_ent_pair.contains_key(&uid) {
-                    self.gen_ent_pair.insert(uid, Vec::new());
+            Process::GenEnt(GenEntProc { x, p: another, label }) => {
+                let id = self.g.add_node((p, Process::GenEnt(GenEntProc { x: x.clone(), p: another, label: label.clone() })));
+                if !self.gen_ent_pair.contains_key(&label) {
+                    self.gen_ent_pair.insert(label.clone(), Vec::new());
                 }
-                self.gen_ent_pair.get_mut(&uid).unwrap().push(id);
-                self.last_node_id.insert(label, id);
+                self.gen_ent_pair.get_mut(&label).unwrap().push(id);
+                self.last_node_id.insert(x, id);
             },
-            Expr::EntSwap(EntSwapExpr { ref arg1, ref arg2 }) => {
+            Process::EntSwap(EntSwapProc { ref x1, ref x2, ref arg1, ref arg2 }) => {
                 let ch1 = arg1.clone();
                 let ch2 = arg2.clone();
                 let arg1_tmp = arg1.clone();
                 let arg2_tmp = arg2.clone();
-                let id = self.g.add_node((p, e));
+                let id = self.g.add_node((p, Process::EntSwap(EntSwapProc {
+                    x1: x1.clone(), x2: x2.clone(), arg1: arg1.clone(), arg2: arg2.clone()
+                })));
                 let id1 = self.last_node_id[&ch1];
                 let id2 = self.last_node_id[&ch2];
                 let _ = self.g.add_edge(id1, id, Dependency::new(arg1_tmp));
                 let _ = self.g.add_edge(id2, id, Dependency::new(arg2_tmp));
                 *self.last_node_id.get_mut(&ch1).unwrap() = id;
                 *self.last_node_id.get_mut(&ch2).unwrap() = id;
+                self.last_node_id.insert(x1.to_string(), id);
+                self.last_node_id.insert(x2.to_string(), id);
             },
             // Compilers must decompose these two instructions!
-            Expr::RCXC(_) => {
+            Process::RCXC(_) => {
                 unimplemented!()
                 //let from_arg = self.last_node_id[&arg];
                 //let from_ent = self.last_node_id[&ent];
-                //let id = self.g.add_node((p, Expr::RCXC(RCXCExpr { arg: arg.clone(), ent, uid })));
+                //let id = self.g.add_node((p, Proc::RCXC(RCXCProc { arg: arg.clone(), ent, uid })));
                 //let _ = self.g.add_edge(from_arg, id, ());
                 //let _ = self.g.add_edge(from_ent, id, ());
                 //*self.last_node_id.get_mut(&arg).unwrap() = id;
                 //// discard `ent` here
             },
-            Expr::RCXT(_) => {
+            Process::RCXT(_) => {
                 unimplemented!()
                 //let from_arg = self.last_node_id[&arg];
                 //let from_ent = self.last_node_id[&ent];
-                //let id = self.g.add_node((p, Expr::RCXT(RCXTExpr { arg: arg.clone(), ent, uid })));
+                //let id = self.g.add_node((p, Proc::RCXT(RCXTProc { arg: arg.clone(), ent, uid })));
                 //let _ = self.g.add_edge(from_arg, id, ());
                 //let _ = self.g.add_edge(from_ent, id, ());
                 //*self.last_node_id.get_mut(&arg).unwrap() = id;
                 //// discard `ent` here
             },
-            Expr::QSend(QSendExpr { arg, ent, uid }) => {
+            Process::QSend(QSendProc { s, p: another, label, arg, ent, uid }) => {
                 let from_arg = self.last_node_id[&arg];
                 let from_ent = self.last_node_id[&ent];
-                let id = self.g.add_node((p, Expr::QSend(QSendExpr { arg: arg.clone(), ent: ent.clone(), uid })));
+                let id = self.g.add_node((p, Process::QSend(QSendProc { s, p: another, label, arg: arg.clone(), ent: ent.clone(), uid })));
                 *self.last_node_id.get_mut(&arg).unwrap() = id;
                 let _ = self.g.add_edge(from_arg, id, Dependency::new(arg));
                 let _ = self.g.add_edge(from_ent, id, Dependency::new(ent));
                 // discard `ent` here
             },
-            Expr::QRecv(QRecvExpr { dst, ent, uid }) => {
+            Process::QRecv(QRecvProc { s, label, dst, ent, uid }) => {
                 let from_ent = self.last_node_id[&ent];
-                let id = self.g.add_node((p, Expr::QRecv(QRecvExpr { dst: dst.clone(), ent: ent.clone(), uid })));
+                let id = self.g.add_node((p, Process::QRecv(QRecvProc { s, label, dst: dst.clone(), ent: ent.clone(), uid })));
                 let _ = self.g.add_edge(from_ent, id, Dependency::new(ent));
                 self.last_node_id.insert(dst, id);
                 // discard `ent` here
             },
-            Expr::Send(SendExpr { ch, data }) => {
-                let id = self.g.add_node((p, Expr::Send(SendExpr { ch: ch.clone(), data: data.clone() })));
-                inquir::bexp::variables(&data).into_iter().for_each(|var| {
+            Process::Send(SendProc { s, dst, data: (label, exp) }) => {
+                let id = self.g.add_node((p, Process::Send(SendProc { s: s.clone(), dst, data: (label.clone(), exp.clone()) })));
+                inquir::expr::variables(&exp).into_iter().for_each(|var| {
                     let from_data_id = self.last_node_id[&var];
-                    //*self.last_node_id.get_mut(&var).unwrap() = id; // TODO: distinguish between read and write dependencies
                     let _ = self.g.add_edge(from_data_id, id, Dependency::new(var));
                 });
-                if let Some(recv_id) = self.sendrecv_pair.get(&ch) {
+                if let Some(recv_id) = self.sendrecv_pair.get(&(s.clone(), label.clone())) {
                     let _ = self.g.add_edge(id, *recv_id, Dependency::new("__comm_dep".to_string()));
                 } else {
-                    self.sendrecv_pair.insert(ch, id);
+                    self.sendrecv_pair.insert((s, label), id);
                 }
             },
-            Expr::Recv(RecvExpr { ch, data }) => {
-                let id = self.g.add_node((p, Expr::Recv(RecvExpr { ch: ch.clone(), data: data.clone() })));
-                self.last_node_id.insert(data, id);
-                if let Some(send_id) = self.sendrecv_pair.get(&ch) {
+            Process::Recv(RecvProc { s, data: (label, var) }) => {
+                let id = self.g.add_node((p, Process::Recv(RecvProc { s: s.clone(), data: (label.clone(), var.clone()) })));
+                self.last_node_id.insert(var, id);
+                if let Some(send_id) = self.sendrecv_pair.get(&(s.clone(), label.clone())) {
                     let _ = self.g.add_edge(*send_id, id, Dependency::new("__comm_dep".to_string()));
                 } else {
-                    self.sendrecv_pair.insert(ch, id);
+                    self.sendrecv_pair.insert((s, label), id);
                 }
             },
-            Expr::Apply(ApplyExpr { gate, args, ctrl }) => {
+            Process::Apply(ApplyProc { gate, args, ctrl }) => {
                 let froms: Vec<_> = args.iter().map(|x| self.last_node_id[x]).collect();
-                let id = self.g.add_node((p, Expr::Apply(ApplyExpr { gate, args: args.clone(), ctrl: ctrl.clone() })));
+                let id = self.g.add_node((p, Process::Apply(ApplyProc { gate, args: args.clone(), ctrl: ctrl.clone() })));
                 for i in 0..froms.len() {
                     let _ = self.g.add_edge(froms[i], id, Dependency::new(args[i].clone()));
                 }
-                if let Some(vars) = ctrl.map(|e| self.collect_bexp_vars(&e)) {
+                if let Some(vars) = ctrl.map(|e| self.collect_exp_vars(&e)) {
                     vars.into_iter().for_each(|x| {
                         let var_node = self.last_node_id[&x];
                         let _ = self.g.add_edge(var_node, id, Dependency::new(x));
@@ -476,8 +488,8 @@ impl DependencyGraphBuilder {
                     *self.last_node_id.get_mut(&x).unwrap() = id;
                 });
             },
-            Expr::Measure(MeasureExpr { dst, args }) => {
-                let id = self.g.add_node((p, Expr::Measure(MeasureExpr { dst: dst.clone(), args: args.clone() })));
+            Process::Measure(MeasureProc { dst, args }) => {
+                let id = self.g.add_node((p, Process::Measure(MeasureProc { dst: dst.clone(), args: args.clone() })));
                 for x in args {
                     let from = self.last_node_id[&x];
                     *self.last_node_id.get_mut(&x).unwrap() = id;
@@ -485,18 +497,18 @@ impl DependencyGraphBuilder {
                 }
                 self.last_node_id.insert(dst, id);
             },
-            Expr::Parallel(es) => es.into_iter().for_each(|e| self.add_exp(p, e)),
+            Process::Parallel(procs) => procs.into_iter().for_each(|proc| self.add_process(p, proc)),
         }
     }
 
-    fn collect_bexp_vars(&self, e: &BExpr) -> Vec<String> {
+    fn collect_exp_vars(&self, e: &Expr) -> Vec<String> {
         match e {
-            BExpr::True | BExpr::False => Vec::new(),
-            BExpr::Var(id) => vec![id.clone()],
-            BExpr::Not(e) => self.collect_bexp_vars(e),
-            BExpr::BinOp(_, l, r) => {
-                let mut lvars = self.collect_bexp_vars(&*l);
-                let mut rvars = self.collect_bexp_vars(&*r);
+            Expr::BLit(_) => Vec::new(),
+            Expr::Var(id) => vec![id.clone()],
+            Expr::Not(e) => self.collect_exp_vars(e),
+            Expr::BinOp(_, l, r) => {
+                let mut lvars = self.collect_exp_vars(&*l);
+                let mut rvars = self.collect_exp_vars(&*r);
                 lvars.append(&mut rvars);
                 lvars
             },

@@ -1,5 +1,5 @@
 pub mod vectorize;
-pub mod quasi_parallel;
+pub mod standardize;
 
 pub use vectorize::vectorize;
-pub use quasi_parallel::quasi_parallel;
+pub use standardize::standardize;

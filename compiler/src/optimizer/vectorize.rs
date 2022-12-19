@@ -1,7 +1,7 @@
 use inquir::{
-    ProcessorId,
-    Expr, FreeExpr, GenEntExpr, EntSwapExpr, QSendExpr, QRecvExpr, RCXCExpr, RCXTExpr,
-    System, LocExpr
+    ParticipantId,
+    Process, FreeProc, GenEntProc, EntSwapProc, QSendProc, QRecvProc, RCXCProc, RCXTProc,
+    System, LocProc
 };
 use crate::{
     arch::Configuration,
@@ -35,29 +35,29 @@ pub fn vectorize(s: System, config: &Configuration) -> System {
             let (p, e) = v.weight();
             // check the current capacity to generate a new entanglement
             match e {
-                Expr::GenEnt(GenEntExpr { label, partner, uid: _ }) => {
-                    let s = *p as usize;
-                    let t = *partner as usize;
+                Process::GenEnt(GenEntProc { x, p: another, label: _ }) => {
+                    let s = p.to_usize();
+                    let t = another.to_usize();
                     if capacity[s][t] == 0 { // postpone
                         nxt_que.push_back(i);
                         continue;
                     } else {
                         capacity[s][t] -= 1;
-                        current_partners[s].insert(label, t);
+                        current_partners[s].insert(x, t);
                     }
                 },
-                Expr::Free(FreeExpr { arg }) => {
-                    let s = *p as usize;
+                Process::Free(FreeProc { arg }) => {
+                    let s = p.to_usize();
                     if current_partners[s].contains_key(&arg) { // entanglements
                         let t = current_partners[s][&arg];
                         capacity[s][t] += 1;
                         current_partners[s].remove(arg);
                     }
                 },
-                Expr::Parallel(_) => unimplemented!(),
+                Process::Parallel(_) => unimplemented!(),
                 _ => {},
             }
-            tmp[*p as usize].push(e.clone());
+            tmp[p.to_usize()].push(e.clone());
             v.outgoing().iter().for_each(|&eidx| {
                 let e = dep_g.edge(eidx);
                 in_deg[e.target()] -= 1;
@@ -71,7 +71,7 @@ pub fn vectorize(s: System, config: &Configuration) -> System {
             // obtain capacities from entanglement consumptions
             exps.iter().for_each(|e| {
                 match e {
-                    Expr::EntSwap(EntSwapExpr { arg1, arg2 }) => {
+                    Process::EntSwap(EntSwapProc { x1: _, x2: _, arg1, arg2 }) => {
                         let t1 = current_partners[p][arg1];
                         let t2 = current_partners[p][arg2];
                         capacity[p][t1] += 1;
@@ -79,15 +79,15 @@ pub fn vectorize(s: System, config: &Configuration) -> System {
                         current_partners[p].remove(arg1);
                         current_partners[p].remove(arg2);
                     },
-                    Expr::QSend(QSendExpr { arg: _, ent, uid: _ })
-                    | Expr::QRecv(QRecvExpr { dst: _, ent, uid: _ })
-                    | Expr::RCXC(RCXCExpr { arg: _, ent, uid: _ })
-                    | Expr::RCXT(RCXTExpr { arg: _, ent, uid: _ }) => {
+                    Process::QSend(QSendProc { s: _, p: _, label: _, arg: _, ent, uid: _ })
+                    | Process::QRecv(QRecvProc { s: _, label: _, dst: _, ent, uid: _ })
+                    | Process::RCXC(RCXCProc { s: _, p: _, label: _, arg: _, ent, uid: _ })
+                    | Process::RCXT(RCXTProc { s: _, p: _, label: _, arg: _, ent, uid: _ }) => {
                         let t = current_partners[p][ent];
                         capacity[p][t] += 1;
                         current_partners[p].remove(ent);
                     },
-                    Expr::Parallel(_) => unimplemented!(),
+                    Process::Parallel(_) => unimplemented!(),
                     _ => {}
                 }
             });
@@ -97,7 +97,7 @@ pub fn vectorize(s: System, config: &Configuration) -> System {
             // parallelize
             if exps.len() > 0 {
                 let e = if exps.len() > 1 {
-                    Expr::Parallel(exps)
+                    Process::Parallel(exps)
                 } else {
                     exps[0].clone()
                 };
@@ -111,16 +111,16 @@ pub fn vectorize(s: System, config: &Configuration) -> System {
 
     pb.finish_with_message("Done vectorization");
 
-    let located_exps: Vec<_> = res.into_iter().enumerate().filter_map(|(p, exps)| {
-        if exps.len() == 0 {
+    let located_procs: Vec<_> = res.into_iter().enumerate().filter_map(|(p, procs)| {
+        if procs.len() == 0 {
             None
         } else {
-            Some(System::Located(LocExpr { p: p as ProcessorId, exps }))
+            Some(System::Located(LocProc { p: ParticipantId::new(p as u32), procs }))
         }
     }).collect();
-    if located_exps.len() > 1 {
-        System::Composition(located_exps)
+    if located_procs.len() > 1 {
+        System::Composition(located_procs)
     } else {
-        located_exps[0].clone()
+        located_procs[0].clone()
     }
 }

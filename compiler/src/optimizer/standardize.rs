@@ -1,13 +1,13 @@
 use inquir::{
-    Expr, ApplyExpr,
+    Process, ApplyProc,
     System,
     PrimitiveGate,
-    BExpr, BinOp,
+    Expr, BinOp,
 };
 use crate::dependency_graph::DependencyGraphBuilder;
 use std::time::Instant;
 
-pub fn quasi_parallel(s: System) -> System {
+pub fn standardize(s: System) -> System {
     let builder = DependencyGraphBuilder::new();
     let mut g = builder.build(s);
     //println!("{}", g.as_graphviz());
@@ -48,7 +48,7 @@ pub fn quasi_parallel(s: System) -> System {
                             assert!(app1.args == app2.args);
                             g.remove_node(node1);
                             let app = merge_app(app1, app2);
-                            g.replace_stmt(node2, Expr::from(app));
+                            g.replace_stmt(node2, Process::Apply(app));
                             g.propagate_classical_deps(node1, node2);
                             updated = true;
                         },
@@ -56,7 +56,7 @@ pub fn quasi_parallel(s: System) -> System {
                             assert!(app2.ctrl == None);
                             if app1.args[0] == app2.args[0] { // X(1);CX(1,2) = CX(1,2);X(1);X(2)
                                 g.swap_adjacent(node1, node2);
-                                let app2 = ApplyExpr {
+                                let app2 = ApplyProc {
                                     gate: PrimitiveGate::X,
                                     args: vec![app2.args[1].clone()],
                                     ctrl: app1.ctrl.clone(),
@@ -72,7 +72,7 @@ pub fn quasi_parallel(s: System) -> System {
                             assert!(app2.ctrl == None);
                             if app1.args[0] == app2.args[1] {
                                 g.swap_adjacent(node1, node2);
-                                let app2 = ApplyExpr {
+                                let app2 = ApplyProc {
                                     gate: PrimitiveGate::Z,
                                     args: vec![app2.args[0].clone()],
                                     ctrl: app1.ctrl.clone(),
@@ -104,6 +104,7 @@ pub fn quasi_parallel(s: System) -> System {
                         _ => {}
                     }
                 } else if e1.is_app() && e2.is_measure() {
+                    continue; // Disable temporarily
                     let app1 = e1.as_app().unwrap();
                     let meas2 = e2.as_measure().unwrap();
                     // 1. Does not support multi-qubit measurements
@@ -115,9 +116,9 @@ pub fn quasi_parallel(s: System) -> System {
                         PrimitiveGate::X => {
                             g.remove_node(node1);
                             let ctrl = if let Some(ctrl) = app1.ctrl {
-                                BExpr::BinOp(BinOp::Xor, Box::new(BExpr::Var(meas2.dst.clone())), Box::new(ctrl))
+                                Expr::BinOp(BinOp::Xor, Box::new(Expr::Var(meas2.dst.clone())), Box::new(ctrl))
                             } else {
-                                BExpr::Not(Box::new(BExpr::Var(meas2.dst.clone())))
+                                Expr::Not(Box::new(Expr::Var(meas2.dst.clone())))
                             };
                             g.replace_bexp_until_end(node2, &meas2.dst, ctrl);
                             updated = true;
@@ -140,20 +141,20 @@ pub fn quasi_parallel(s: System) -> System {
     s
 }
 
-fn merge_app(app1: ApplyExpr, app2: ApplyExpr) -> ApplyExpr {
+fn merge_app(app1: ApplyProc, app2: ApplyProc) -> ApplyProc {
     assert!(app1.args == app2.args);
     assert!(app1.gate == app2.gate);
     let b1 = app1.ctrl;
     let b2 = app2.ctrl;
     match (b1, b2) {
-        (None, None) => ApplyExpr { gate: PrimitiveGate::I, args: app1.args, ctrl: None },
+        (None, None) => ApplyProc { gate: PrimitiveGate::I, args: app1.args, ctrl: None },
         (None, Some(b)) | (Some(b), None) => {
-            let ctrl = Some(BExpr::Not(Box::new(b)));
-            ApplyExpr { gate: app1.gate, args: app1.args, ctrl }
+            let ctrl = Some(Expr::Not(Box::new(b)));
+            ApplyProc { gate: app1.gate, args: app1.args, ctrl }
         },
         (Some(b1), Some(b2)) => {
-            let ctrl = Some(BExpr::BinOp(BinOp::Xor, Box::new(b1), Box::new(b2)));
-            ApplyExpr { gate: app1.gate, args: app1.args, ctrl }
+            let ctrl = Some(Expr::BinOp(BinOp::Xor, Box::new(b1), Box::new(b2)));
+            ApplyProc { gate: app1.gate, args: app1.args, ctrl }
         },
     }
 }

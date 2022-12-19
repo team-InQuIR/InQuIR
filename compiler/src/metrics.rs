@@ -1,6 +1,6 @@
 use inquir::{
-    Expr, FreeExpr, GenEntExpr, EntSwapExpr,
-    System, LocExpr,
+    Process, FreeProc, GenEntProc, EntSwapProc,
+    System, LocProc,
 };
 use graph::algo::toposort;
 
@@ -67,25 +67,25 @@ pub fn calc_e_depth(g: &DependencyGraph, config: &Configuration) -> u32 {
     let mut entanglements = vec![HashMap::new(); p_sz];
     while let Some(idx) = que.pop_front() {
         let (p, e) = g.node(idx).weight();
-        let s = *p as usize;
+        let s = p.to_usize();
         let is_issued = match e {
-            Expr::GenEnt(GenEntExpr { label, partner, uid: _ }) => {
-                let t = *partner as usize;
+            Process::GenEnt(GenEntProc { x, p: another, label: _ }) => {
+                let t = another.to_usize();
                 if let Some(cost) = ent_pool[s][t].pop() {
                     dp[idx] = cost + 1;
-                    entanglements[s].insert(label, *partner as usize);
+                    entanglements[s].insert(x, t);
                     true
                 } else {
                     false
                 }
             },
-            Expr::Free(FreeExpr { arg }) => {
+            Process::Free(FreeProc { arg }) => {
                 let t = entanglements[s][&arg];
                 ent_pool[s][t].push(dp[idx]); // return
                 entanglements[s].remove(&arg);
                 true
             },
-            Expr::EntSwap(EntSwapExpr{ arg1, arg2 }) => {
+            Process::EntSwap(EntSwapProc{ x1: _, x2: _, arg1, arg2 }) => {
                 let t1 = entanglements[s][&arg1];
                 let t2 = entanglements[s][&arg2];
                 ent_pool[s][t1].push(dp[idx]);
@@ -95,11 +95,11 @@ pub fn calc_e_depth(g: &DependencyGraph, config: &Configuration) -> u32 {
                 true
             },
             // These instructions have been decomposed.
-            Expr::QSend(_) => unimplemented!(),
-            Expr::QRecv(_) => unimplemented!(),
-            Expr::RCXC(_) => unimplemented!(),
-            Expr::RCXT(_) => unimplemented!(),
-            Expr::Parallel(_) => unimplemented!(),
+            Process::QSend(_) => unimplemented!(),
+            Process::QRecv(_) => unimplemented!(),
+            Process::RCXC(_) => unimplemented!(),
+            Process::RCXT(_) => unimplemented!(),
+            Process::Parallel(_) => unimplemented!(),
             // Other instructions do not increase the E-depth.
             _ => true
         };
@@ -122,15 +122,15 @@ pub fn calc_e_depth(g: &DependencyGraph, config: &Configuration) -> u32 {
 
 pub fn calc_e_count(s: &System) -> u32 {
     match s {
-        System::Located(LocExpr { p: _, exps }) =>  exps.iter().map(|e| calc_e_count_exp(e)).sum(),
+        System::Located(LocProc { p: _, procs }) =>  procs.iter().map(|proc| calc_e_count_proc(proc)).sum(),
         System::Composition(ss) => ss.iter().map(|t| calc_e_count(t)).sum(),
     }
 }
 
-fn calc_e_count_exp(e: &Expr) -> u32 {
-    match e {
-        Expr::GenEnt(_) => 1,
-        Expr::Parallel(es) => es.iter().map(|e| calc_e_count_exp(e)).sum(),
+fn calc_e_count_proc(proc: &Process) -> u32 {
+    match proc {
+        Process::GenEnt(_) => 1,
+        Process::Parallel(procs) => procs.iter().map(|proc| calc_e_count_proc(proc)).sum(),
         _ => 0,
     }
 }
@@ -142,27 +142,27 @@ fn calc_c_depth(g: &DependencyGraph) -> u32 {
     for idx in tord {
         let (_, exp) = g.node(idx).weight();
         match exp {
-            Expr::GenEnt(_) | Expr::EntSwap(_)
+            Process::GenEnt(_) | Process::EntSwap(_)
                 => g.outgoing_edges(idx).iter().for_each(|&eidx| {
                     let to = g.edge(eidx).target();
                     dp[to] = u32::max(dp[to], dp[idx]);
                 }),
-            Expr::QSend(_) | Expr::Send(_)
+            Process::QSend(_) | Process::Send(_)
                 => g.node(idx).outgoing().iter().for_each(|&eidx| {
                     let to = g.edge(eidx).target();
                     dp[to] = u32::max(dp[to], dp[idx] + 1)
                 }),
-            Expr::QRecv(_) | Expr::Recv(_)
+            Process::QRecv(_) | Process::Recv(_)
                 => g.node(idx).outgoing().iter().for_each(|&eidx| {
                     let to = g.edge(eidx).target();
                     dp[to] = u32::max(dp[to], dp[idx])
                 }),
-            Expr::RCXC(_) | Expr::RCXT(_)
+            Process::RCXC(_) | Process::RCXT(_)
                 => g.node(idx).outgoing().iter().for_each(|&eidx| {
                     let to = g.edge(eidx).target();
                     dp[to] = u32::max(dp[to], dp[idx] + 1)
                 }),
-            Expr::Parallel(_) => unimplemented!(),
+            Process::Parallel(_) => unimplemented!(),
             _ => g.node(idx).outgoing().iter().for_each(|&eidx| {
                 let to = g.edge(eidx).target();
                 dp[to] = u32::max(dp[to], dp[idx])
@@ -174,17 +174,17 @@ fn calc_c_depth(g: &DependencyGraph) -> u32 {
 
 fn calc_c_count(s: &System) -> u32 {
     match s {
-        System::Located(LocExpr { p: _, exps }) => exps.iter().map(|e| calc_c_count_exp(e)).sum(),
+        System::Located(LocProc { p: _, procs }) => procs.iter().map(|proc| calc_c_count_proc(proc)).sum(),
         System::Composition(ss) => ss.iter().map(|s| calc_c_count(s)).sum(),
     }
 }
 
-fn calc_c_count_exp(e: &Expr) -> u32 {
+fn calc_c_count_proc(e: &Process) -> u32 {
     match e {
-        Expr::QSend(_) | Expr::QRecv(_) => 1,
-        Expr::Send(_) | Expr::Recv(_) => 1,
-        Expr::RCXC(_) | Expr::RCXT(_) => 1,
-        Expr::Parallel(es) => es.iter().map(|e| calc_c_count_exp(e)).sum(),
+        Process::QSend(_) | Process::QRecv(_) => 1,
+        Process::Send(_) | Process::Recv(_) => 1,
+        Process::RCXC(_) | Process::RCXT(_) => 1,
+        Process::Parallel(es) => es.iter().map(|e| calc_c_count_proc(e)).sum(),
         _ => 0,
     }
 }
