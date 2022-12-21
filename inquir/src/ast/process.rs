@@ -201,7 +201,17 @@ impl Process {
             Process::Recv(_) => HashSet::new(),
             Process::RCXC(proc) => [proc.arg.clone(), proc.ent.clone()].into(),
             Process::RCXT(proc) => [proc.arg.clone(), proc.ent.clone()].into(),
-            Process::Apply(proc) => HashSet::from_iter(proc.args.clone()),
+            Process::Apply(proc) => {
+                let mut hs = HashSet::from_iter(proc.args.clone());
+                if let Some(hs2) = proc.ctrl.clone().map(|e| variables(&e)) {
+                    for var in hs2 {
+                        hs.insert(var);
+                    }
+                    hs
+                } else {
+                    hs
+                }
+            },
             Process::Measure(proc) => HashSet::from_iter(proc.args.clone()),
             Process::Parallel(ps) => HashSet::from_iter(ps.iter().map(|p| p.free_variables().into_iter().collect())),
         }
