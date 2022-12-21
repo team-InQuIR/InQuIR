@@ -44,7 +44,7 @@ struct Args {
 
     /// Enable quasi-parallelism.
     #[clap(long)]
-    quasi_para: bool,
+    enable_standardize: bool,
 
     /// Where a dependency graph is output.
     #[clap(long)]
@@ -77,7 +77,7 @@ fn main() {
         Strategy::AlwaysRemote => Box::new(AlwaysRemoteAllocator::new(&hir_exps, &config)),
     };
 
-    let res = codegen(hir_exps, &config, allocator, args.quasi_para);
+    let res = codegen(hir_exps, &config, allocator, args.enable_standardize);
     let output_filename = if let Some(filename) = args.output {
         filename
     } else {

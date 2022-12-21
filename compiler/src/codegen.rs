@@ -1,6 +1,7 @@
 pub mod allocation;
 pub mod always_rcx;
 pub mod decomposer;
+pub mod convert_graph;
 
 use allocation::NodeAllocator;
 use inquir;
@@ -44,14 +45,14 @@ fn construct_shortest_path(
     path.into_iter().rev().collect()
 }
 
-pub fn codegen(exps: Vec<hir::Expr>, config: &Configuration, allocator: Box<dyn NodeAllocator>, quasi: bool) -> inquir::System {
+pub fn codegen(exps: Vec<hir::Expr>, config: &Configuration, allocator: Box<dyn NodeAllocator>, standardize: bool) -> inquir::System {
     let mut decomposer = Decomposer::new();
     let s = route_telegates(exps, config, allocator);
     println!("[codegen] finish routing.");
     let s = decomposer.decompose(s);
     println!("[codegen] finish decomposition.");
-    let s = if quasi {
-        let s = optimizer::standardize(s);
+    let s = if standardize {
+        let s = optimizer::standardize(s, config);
         println!("[codegen] finish standardization.");
         s
     } else {

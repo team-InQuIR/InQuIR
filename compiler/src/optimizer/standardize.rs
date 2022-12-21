@@ -4,10 +4,14 @@ use inquir::{
     PrimitiveGate,
     Expr, BinOp,
 };
-use crate::dependency_graph::DependencyGraphBuilder;
+use crate::{
+    arch::Configuration,
+    dependency_graph::DependencyGraphBuilder,
+    codegen::convert_graph::convert_graph,
+};
 use std::time::Instant;
 
-pub fn standardize(s: System) -> System {
+pub fn standardize(s: System, config: &Configuration) -> System {
     let builder = DependencyGraphBuilder::new();
     let mut g = builder.build(s);
     //println!("{}", g.as_graphviz());
@@ -134,11 +138,7 @@ pub fn standardize(s: System) -> System {
         }
     }
 
-    let s = g.as_system();
-    //let builder = DependencyGraphBuilder::new();
-    //let g = builder.build(s.clone());
-    //println!("{}", g.as_graphviz());
-    s
+    convert_graph(g, config)
 }
 
 fn merge_app(app1: ApplyProc, app2: ApplyProc) -> ApplyProc {
