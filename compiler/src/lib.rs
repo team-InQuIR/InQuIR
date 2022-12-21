@@ -5,4 +5,5 @@ pub mod metrics;
 pub mod parser;
 pub mod optimizer;
 pub mod dependency_graph;
+pub mod simulation;
 pub mod utils;

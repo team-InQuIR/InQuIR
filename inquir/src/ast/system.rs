@@ -17,6 +17,26 @@ pub struct LocProc {
     pub procs: Vec<Process>,
 }
 
+pub fn projection(s: &System, p: ParticipantId) -> Option<Vec<Process>> {
+    match s {
+        System::Located(proc) => {
+            if proc.p == p {
+                return Some(proc.procs.clone());
+            } else {
+                return None;
+            }
+        },
+        System::Composition(ss) => {
+            for s in ss {
+                if let Some(procs) = projection(s, p) {
+                    return Some(procs);
+                }
+            }
+            None
+        },
+    }
+}
+
 impl fmt::Display for System {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {

@@ -6,6 +6,7 @@ use inqcc::{
     codegen::always_rcx::AlwaysRemoteAllocator,
     metrics::Metrics,
     dependency_graph::DependencyGraphBuilder,
+    simulation::simulator::Simulator,
 };
 use inquir::System;
 
@@ -98,5 +99,9 @@ fn main() {
         println!("  C-depth: {}", metrics.c_depth());
         println!("  C-count: {}", metrics.c_count());
         output_metrics(&met_path, &metrics).unwrap();
+
+        let simulator = Simulator::new(&res, &config);
+        let time = simulator.run();
+        println!("  Execution cost: {}", time);
     }
 }

@@ -1,8 +1,38 @@
 use std::fmt;
 use std::collections::HashSet;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Value {
     Bool(bool),
+    Qubit(Qubit),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum QubitKind {
+    Data,
+    Comm,
+}
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Qubit {
+    kind: QubitKind,
+    id: u32,
+}
+
+impl Qubit {
+    pub fn new(kind: QubitKind, id: u32) -> Self {
+        Self {
+            kind,
+            id
+        }
+    }
+
+    pub fn kind(&self) -> QubitKind {
+        self.kind.clone()
+    }
+
+    pub fn id(&self) -> u32 {
+        self.id
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

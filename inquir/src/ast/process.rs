@@ -6,6 +6,7 @@ use crate::ast::{
     ParticipantId,
 };
 use std::fmt;
+use std::collections::HashSet;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Process {
@@ -186,7 +187,40 @@ impl Process {
             _ => None,
         }
     }
+
+    pub fn free_variables(&self) -> HashSet<String> {
+        match self {
+            Process::Open(_) => HashSet::new(),
+            Process::Init(_) => HashSet::new(),
+            Process::Free(proc) => [proc.arg.clone()].into(),
+            Process::GenEnt(_) => HashSet::new(),
+            Process::EntSwap(proc) => [proc.arg1.clone(), proc.arg2.clone()].into(),
+            Process::QSend(proc) => [proc.arg.clone(), proc.ent.clone()].into(),
+            Process::QRecv(proc) => [proc.ent.clone()].into(),
+            Process::Send(proc) => variables(&proc.data.1),
+            Process::Recv(_) => HashSet::new(),
+            Process::RCXC(proc) => [proc.arg.clone(), proc.ent.clone()].into(),
+            Process::RCXT(proc) => [proc.arg.clone(), proc.ent.clone()].into(),
+            Process::Apply(proc) => HashSet::from_iter(proc.args.clone()),
+            Process::Measure(proc) => HashSet::from_iter(proc.args.clone()),
+            Process::Parallel(ps) => HashSet::from_iter(ps.iter().map(|p| p.free_variables().into_iter().collect())),
+        }
+    }
+
+    pub fn gen_variables(&self) -> Vec<String> {
+        match self {
+            Process::Init(proc) => vec![proc.dst.clone()],
+            Process::GenEnt(proc) => vec![proc.x.clone()],
+            Process::EntSwap(proc) => vec![proc.x1.clone(), proc.x2.clone()],
+            Process::QRecv(proc) => vec![proc.dst.clone()],
+            Process::Recv(proc) => vec![proc.data.1.clone()],
+            Process::Measure(proc) => vec![proc.dst.clone()],
+            Process::Parallel(ps) => ps.iter().map(|p| p.gen_variables()).flatten().collect(),
+            _ => vec![],
+        }
+    }
 }
+
 
 impl fmt::Display for Process {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
