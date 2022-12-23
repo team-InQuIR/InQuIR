@@ -1,0 +1,21 @@
+{
+    "nodes": [
+        {
+            "num_of_qubits": 4
+        },
+        {
+            "num_of_qubits": 4
+        },
+        {
+            "num_of_qubits": 4
+        },
+        {
+            "num_of_qubits": 4
+        }
+    ],
+    "connections": [
+        [0, 1, 4],
+        [1, 2, 4],
+        [2, 3, 4]
+    ]
+}
