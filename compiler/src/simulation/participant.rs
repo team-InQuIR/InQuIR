@@ -4,7 +4,11 @@ use inquir::{
     Value,
     Process,
 };
-use crate::simulation::shared_memory::SharedMemory;
+use crate::simulation::{
+    shared_memory::SharedMemory,
+    comm_buffer::SendData,
+    evaluation_cost::{EvaluationCost, collect_cost},
+};
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::collections::{BinaryHeap, HashMap, HashSet};
@@ -12,8 +16,8 @@ use std::cmp::Reverse;
 
 #[derive(Debug, Clone)]
 struct Registers {
-    q: BinaryHeap<Reverse<(u32, Qubit)>>,
-    cq: HashMap<ParticipantId, BinaryHeap<Reverse<(u32, Qubit)>>>,
+    q: BinaryHeap<Reverse<(EvaluationCost, Qubit)>>,
+    cq: HashMap<ParticipantId, BinaryHeap<Reverse<(EvaluationCost, Qubit)>>>,
     q_to_partner: HashMap<u32, ParticipantId>,
     used_q: HashSet<u32>,
     used_cq: HashSet<u32>,
@@ -23,7 +27,8 @@ impl Registers {
     pub fn new(num_q: usize, num_cq: HashMap<ParticipantId, u32>) -> Self {
         let q = (0..num_q).fold(BinaryHeap::new(), |mut h, i| {
             let q = Qubit::new(QubitKind::Data, i as u32);
-            h.push(Reverse((0, q)));
+            let initial_cost = EvaluationCost::new(0, 0, 0);
+            h.push(Reverse((initial_cost, q)));
             h
         });
         let mut cq = HashMap::new();
@@ -34,7 +39,8 @@ impl Registers {
             (0..*num).into_iter().for_each(|_| {
                 let cq = Qubit::new(QubitKind::Comm, counter);
                 q_to_partner.insert(cq.id(), partner.clone());
-                h.push(Reverse((0, cq)));
+                let initial_cost = EvaluationCost::new(0, 0, 0);
+                h.push(Reverse((initial_cost, cq)));
                 counter += 1;
             });
             cq.insert(partner.clone(), h);
@@ -48,38 +54,45 @@ impl Registers {
         }
     }
 
-    pub fn init_data_qubit(&mut self) -> Option<(Qubit, u32)> {
-        if let Some(Reverse((t, q))) = self.q.pop() {
+    pub fn init_data_qubit(&mut self) -> Option<(Qubit, EvaluationCost)> {
+        if let Some(Reverse((cost, q))) = self.q.pop() {
             self.used_q.insert(q.id());
-            Some((q, t))
+            Some((q, cost))
         } else {
             None
         }
     }
 
-    pub fn init_comm_qubit(&mut self, partner: ParticipantId) -> Option<(Qubit, u32)> {
-        if let Some(Reverse((t, q))) = self.cq.get_mut(&partner).unwrap().pop() {
+    pub fn init_comm_qubit(&mut self, partner: ParticipantId) -> Option<(Qubit, EvaluationCost)> {
+        if let Some(Reverse((cost, q))) = self.cq.get_mut(&partner).unwrap().pop() {
             self.used_cq.insert(q.id());
-            Some((q, t))
+            Some((q, cost))
         } else {
             None
         }
     }
 
-    pub fn free_qubit(&mut self, q: Qubit, t: u32) {
+    pub fn free_qubit(&mut self, q: Qubit, cost: EvaluationCost) {
         match q.kind() {
             QubitKind::Data => {
                 assert!(self.used_q.contains(&q.id()));
                 self.used_q.remove(&q.id());
-                self.q.push(Reverse((t, q)));
+                self.q.push(Reverse((cost, q)));
             },
             QubitKind::Comm => {
                 assert!(self.used_cq.contains(&q.id()));
                 self.used_cq.remove(&q.id());
                 let partner = self.q_to_partner[&q.id()];
-                self.cq.get_mut(&partner).unwrap().push(Reverse((t, q)));
+                self.cq.get_mut(&partner).unwrap().push(Reverse((cost, q)));
             },
         }
+    }
+
+    pub fn debug_print(&self) {
+        println!("{:?}", self.q);
+        println!("{:?}", self.cq);
+        println!("{:?}", self.used_q);
+        println!("{:?}", self.used_cq);
     }
 }
 
@@ -90,7 +103,7 @@ pub struct Participant {
     processes: Vec<Process>,
     current_proc_idx: usize,
     shared_memory: Rc<RefCell<SharedMemory>>,
-    time_until: HashMap<String, u32>,
+    cost_when_finished: HashMap<String, EvaluationCost>,
     var_to_qubit: HashMap<String, Qubit>,
 }
 
@@ -102,7 +115,7 @@ impl Participant {
             processes: Vec::new(),
             current_proc_idx: 0,
             shared_memory: mem,
-            time_until: HashMap::new(),
+            cost_when_finished: HashMap::new(),
             var_to_qubit: HashMap::new(),
         }
     }
@@ -145,9 +158,10 @@ impl Participant {
             },
             Process::Init(proc) => {
                 let x = proc.dst.clone();
-                if let Some((q, t)) = self.reg.init_data_qubit() {
+                if let Some((q, mut cost)) = self.reg.init_data_qubit() {
                     self.var_to_qubit.insert(x.clone(), q);
-                    self.time_until.insert(x, t + latency);
+                    cost.add_time(latency);
+                    self.cost_when_finished.insert(x, cost);
                     true
                 } else {
                     false
@@ -155,22 +169,24 @@ impl Participant {
             },
             Process::Free(proc) => {
                 let q = self.var_to_qubit.remove(&proc.arg).unwrap();
-                let t = self.time_until[&proc.arg];
-                self.reg.free_qubit(q, t);
+                let cost = self.cost_when_finished[&proc.arg];
+                self.reg.free_qubit(q, cost);
                 true
             },
             Process::GenEnt(proc) => {
                 let x = proc.x.clone();
                 let mut mem = self.shared_memory.borrow_mut();
-                if let Some((q, t)) = self.reg.init_comm_qubit(proc.p) {
-                    mem.request_ent(proc.p, t, proc.label.clone());
-                    if let Some(t2) = mem.check_ent(self.id, proc.label) {
-                        let t = u32::max(t, t2);
+                if let Some((q, cost)) = self.reg.init_comm_qubit(proc.p) {
+                    mem.request_ent(proc.p, cost, proc.label.clone());
+                    if let Some(cost2) = mem.check_ent(self.id, proc.label) {
+                        let mut cost = collect_cost(vec![cost, cost2]);
                         self.var_to_qubit.insert(x.clone(), q);
-                        self.time_until.insert(x, t + latency);
+                        cost.add_time(latency);
+                        cost.add_e_depth(1);
+                        self.cost_when_finished.insert(x, cost);
                         true
                     } else { // wait for the partner
-                        self.reg.free_qubit(q, t);
+                        self.reg.free_qubit(q, cost);
                         false
                     }
                 } else {
@@ -179,55 +195,61 @@ impl Participant {
             },
             Process::EntSwap(proc) => {
                 let args = [&proc.arg1, &proc.arg2];
-                let s_time = args.iter().map(|&var| self.time_until[var]).max().unwrap();
-                let e_time = s_time + latency;
+                let mut cost = collect_cost(args.iter().map(|&var| self.cost_when_finished[var]).collect());
+                cost.add_time(latency);
                 args.iter().for_each(|&var| {
-                    self.time_until.insert(var.clone(), e_time);
-                    self.reg.free_qubit(self.var_to_qubit.remove(var).unwrap(), e_time);
+                    self.cost_when_finished.insert(var.clone(), cost);
+                    self.reg.free_qubit(self.var_to_qubit.remove(var).unwrap(), cost);
                 });
                 [proc.x1, proc.x2].into_iter().for_each(|var| {
-                    self.time_until.insert(var, e_time);
+                    self.cost_when_finished.insert(var, cost);
                 });
                 true
             },
             Process::Send(proc) => {
                 let (l, e) = proc.data;
                 let dummy_val = Value::Bool(true); // TODO
-                let s_time = inquir::variables(&e).into_iter().map(|var| {
-                    self.time_until[&var]
-                }).max().unwrap();
-                self.shared_memory.borrow_mut().send(proc.s, proc.dst, s_time + latency, l, dummy_val);
+                let mut cost = collect_cost(inquir::variables(&e).into_iter().map(|var| {
+                    self.cost_when_finished[&var]
+                }).collect());
+                cost.add_time(latency);
+                cost.add_c_depth(1);
+                let send_data = SendData::new(l, cost, dummy_val);
+                self.shared_memory.borrow_mut().send(proc.s, proc.dst, send_data);
                 true
             },
             Process::Recv(proc) => {
                 let (l, var) = proc.data;
-                if let Some((recv_t, _)) = self.shared_memory.borrow_mut().recv(proc.s, self.id, l) {
-                    let e_time = recv_t + latency;
-                    self.time_until.insert(var, e_time);
+                if let Some(recv_data) = self.shared_memory.borrow_mut().recv(proc.s, self.id, l) {
+                    let mut cost = recv_data.cost();
+                    cost.add_time(latency);
+                    cost.add_c_depth(1);
+                    self.cost_when_finished.insert(var, cost);
                     true
                 } else {
                     false
                 }
             },
             Process::Apply(proc) => {
-                let qs_t = proc.args.iter().map(|var| self.time_until[var]).max().unwrap();
-                let ctrl_t = proc.ctrl.map_or(0, |e| {
-                    inquir::variables(&e).into_iter().map(|var| self.time_until[&var]).max().map_or(0, |t| t)
+                let qs_cost = collect_cost(proc.args.iter().map(|var| self.cost_when_finished[var]).collect());
+                let ctrl_cost = proc.ctrl.map_or(EvaluationCost::new(0, 0, 0), |e| {
+                    collect_cost(inquir::variables(&e).into_iter().map(|var| self.cost_when_finished[&var]).collect())
                 });
-                let dep_t = u32::max(qs_t, ctrl_t);
-                let e_time = dep_t + latency;
+                let mut cost = collect_cost(vec![qs_cost, ctrl_cost]);
+                cost.add_time(latency);
                 proc.args.into_iter().for_each(|var| {
-                    *self.time_until.get_mut(&var).unwrap() = e_time;
+                    *self.cost_when_finished.get_mut(&var).unwrap() = cost;
                 });
                 true
             },
             Process::Measure(proc) => {
-                let s_time = proc.args.iter().map(|var| self.time_until[var]).max().unwrap();
-                let e_time = s_time + latency;
+                let prev_costs = proc.args.iter().map(|var| self.cost_when_finished[var]).collect();
+                let mut cost = collect_cost(prev_costs);
+                cost.add_time(latency);
                 proc.args.into_iter().for_each(|var| {
-                    *self.time_until.get_mut(&var).unwrap() = e_time;
+                    *self.cost_when_finished.get_mut(&var).unwrap() = cost;
                 });
-                self.time_until.insert(proc.dst, e_time);
+                self.cost_when_finished.insert(proc.dst, cost);
                 true
             },
             Process::QSend(_) => unimplemented!(),
@@ -257,7 +279,17 @@ impl Participant {
         self.processes.len() == self.current_proc_idx
     }
 
-    pub fn current_time(&self) -> u32 {
-        self.time_until.iter().map(|(_, t)| t).max().map_or(0, |t| *t)
+    pub fn evaluation_cost(&self) -> EvaluationCost {
+        let costs = self.cost_when_finished.iter().map(|(_, cost)| *cost).collect();
+        collect_cost(costs)
+    }
+
+    pub fn debug_print(&self) {
+        if self.is_completed() {
+            println!("{}: complete.", self.id);
+        } else {
+            println!("{}: {}", self.id, self.processes[self.current_proc_idx]);
+            self.reg.debug_print();
+        }
     }
 }

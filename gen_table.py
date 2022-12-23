@@ -21,10 +21,9 @@ for json_path in result_jsons:
     with open(json_path) as f:
         data.append((circ_name, json.load(f)))
 
-s = '\\begin{tabular}{|'
+s = ''
 if len(data) > 0:
     keys = data[0][1].keys()
-    s += 'r|' * (len(keys) + 1) + '} \\hline\n'
     # header
     s += 'circuit name'
     for key in keys:
@@ -39,6 +38,5 @@ if len(data) > 0:
             s += ' & ' + str(json[key])
         s += ' \\\\ \\hline\n'
 
-    s += '\\end{tabular}'
     print(s)
 

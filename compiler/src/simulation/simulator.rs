@@ -1,6 +1,7 @@
 use crate::simulation::{
     participant::Participant,
     shared_memory::SharedMemory,
+    evaluation_cost::{EvaluationCost, collect_cost},
 };
 use crate::arch::Configuration;
 use inquir::{
@@ -65,7 +66,7 @@ impl Simulator {
         }
     }
 
-    pub fn run(mut self) -> u32 {
+    pub fn run(mut self) -> EvaluationCost {
         println!("Start simulation.");
         while self.participants.iter().any(|p| !p.is_completed()) {
             let steps: Vec<_> = self.participants.iter_mut().map(|p| {
@@ -79,11 +80,12 @@ impl Simulator {
             }).collect();
 
             if steps.into_iter().all(|n| n == 0) {
+                self.participants.iter().for_each(|p| p.debug_print());
                 panic!("Simulation got stuck!"); // TODO
             }
         }
         self.mp.clear().unwrap();
-        self.participants.iter().map(|p| p.current_time()).max().unwrap()
+        collect_cost(self.participants.into_iter().map(|p| p.evaluation_cost()).collect())
     }
 }
 

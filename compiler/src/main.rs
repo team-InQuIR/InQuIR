@@ -2,8 +2,7 @@ use inqcc::{
     arch::Configuration,
     parser::qasm2,
     codegen::codegen,
-    codegen::allocation::{NaiveNodeAllocator, NodeAllocator},
-    codegen::always_rcx::AlwaysRemoteAllocator,
+    codegen::routing::{Strategy, RemoteOpRouter, TelegateOnly, TeledataOnly},
     metrics::Metrics,
     dependency_graph::DependencyGraphBuilder,
     simulation::simulator::Simulator,
@@ -15,11 +14,6 @@ use std::path::Path;
 use std::io::Write;
 use clap::Parser;
 
-#[derive(Debug, Clone, clap::ArgEnum)]
-enum Strategy {
-    AlwaysMove,
-    AlwaysRemote,
-}
 
 #[derive(Parser, Debug)]
 #[clap(author, version = "0.0.0", about, long_about = None)]
@@ -72,12 +66,12 @@ fn main() {
     let hir_exps = qasm2::parse(&source).unwrap();
     //println!("Finished parse.");
 
-    let allocator: Box<dyn NodeAllocator> = match args.strategy {
-        Strategy::AlwaysMove => Box::new(NaiveNodeAllocator::new(&hir_exps, &config)),
-        Strategy::AlwaysRemote => Box::new(AlwaysRemoteAllocator::new(&hir_exps, &config)),
+    let router: Box<dyn RemoteOpRouter> = match args.strategy {
+        Strategy::TeledataOnly => Box::new(TeledataOnly::new(&hir_exps, &config)),
+        Strategy::TelegateOnly => Box::new(TelegateOnly::new(&hir_exps, &config)),
     };
 
-    let res = codegen(hir_exps, &config, allocator, args.quasi_para);
+    let res = codegen(hir_exps, &config, router, args.quasi_para);
     let output_filename = if let Some(filename) = args.output {
         filename
     } else {
@@ -92,16 +86,15 @@ fn main() {
     };
 
     if let Some(met_path) = args.metrics {
-        let metrics = Metrics::new(&res, &config);
+        let simulator = Simulator::new(&res, &config);
+        let cost = simulator.run();
+        let metrics = Metrics::new(&res, cost);
         println!("Metrics:");
         println!("  E-depth: {}", metrics.e_depth());
         println!("  E-count: {}", metrics.e_count());
         println!("  C-depth: {}", metrics.c_depth());
         println!("  C-count: {}", metrics.c_count());
+        println!("  Execution cost: {}", metrics.time());
         output_metrics(&met_path, &metrics).unwrap();
-
-        let simulator = Simulator::new(&res, &config);
-        let time = simulator.run();
-        println!("  Execution cost: {}", time);
     }
 }

@@ -3,29 +3,30 @@ use inquir::{
     Value,
 };
 use std::collections::{VecDeque};
+use crate::simulation::evaluation_cost::EvaluationCost;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SendData {
-    time: u32,
     label: Label,
+    cost: EvaluationCost,
     value: Value,
 }
 
 impl SendData {
-    pub fn new(time: u32, label: Label, value: Value) -> Self {
+    pub fn new(label: Label, cost: EvaluationCost, value: Value) -> Self {
         Self {
-            time,
             label,
+            cost,
             value
         }
     }
 
-    pub fn time(&self) -> u32 {
-        self.time
-    }
-
     pub fn label(&self) -> &Label {
         &self.label
+    }
+
+    pub fn cost(&self) -> EvaluationCost {
+        self.cost.clone()
     }
 
     pub fn value(&self) -> &Value {
@@ -49,8 +50,8 @@ impl CommBuffer {
         self.que.push_back(data);
     }
 
-    pub fn pop(&mut self, l: Label) -> Option<(u32, Value)> {
+    pub fn pop(&mut self, l: Label) -> Option<SendData> {
         let idx = self.que.iter().position(|data| *data.label() == l);
-        idx.and_then(|idx| self.que.remove(idx)).map(|data| (data.time(), data.value().clone()))
+        idx.and_then(|idx| self.que.remove(idx))
     }
 }

@@ -1,13 +1,13 @@
 use std::collections::BTreeMap;
-use crate::arch::Configuration;
 use crate::hir;
-use super::allocation::{NodeAllocator, RemoteOp};
+use crate::arch::Configuration;
+use crate::codegen::routing::router::{RemoteOpRouter, RemoteOp};
 
-pub struct AlwaysRemoteAllocator {
+pub struct TelegateOnly {
     current_pos: BTreeMap<String, u32>,
 }
 
-impl AlwaysRemoteAllocator {
+impl TelegateOnly {
     pub fn new(exps: &Vec<hir::Expr>, config: &Configuration) -> Self {
         let current_pos = Self::create_initial_map(&exps, &config);
         Self {
@@ -44,13 +44,17 @@ impl AlwaysRemoteAllocator {
     }
 }
 
-impl NodeAllocator for AlwaysRemoteAllocator {
+impl RemoteOpRouter for TelegateOnly {
     fn current_pos(&self, id: &String) -> u32 {
         self.current_pos[id]
     }
 
     /// Always choose remote CX gate
-    fn next(&mut self, _: &String, _: &String) -> RemoteOp {
-        RemoteOp::RCX
+    fn next(&mut self, x1: &String, x2: &String) -> RemoteOp {
+        if self.current_pos(x1) == self.current_pos(x2) {
+            RemoteOp::LocalCX
+        } else {
+            RemoteOp::RCX
+        }
     }
 }

@@ -1,25 +1,16 @@
 use std::collections::BTreeMap;
-use crate::arch::Configuration;
 use crate::hir;
+use crate::arch::Configuration;
+use crate::codegen::routing::{RemoteOpRouter, RemoteOp};
 
-pub enum RemoteOp {
-    RCX,
-    Move(Vec<(String, u32, u32)>),
-}
-
-pub trait NodeAllocator {
-    fn current_pos(&self, id: &String) -> u32;
-    fn next(&mut self, id1: &String, id2: &String) -> RemoteOp;
-}
-
-pub struct NaiveNodeAllocator {
+pub struct TeledataOnly {
     current_pos: BTreeMap<String, u32>,
     free_qubits: Vec<u32>,
 }
 
-impl NaiveNodeAllocator {
+impl TeledataOnly {
     pub fn new(exps: &Vec<hir::Expr>, config: &Configuration) -> Self {
-        let (current_pos, free_qubits) = NaiveNodeAllocator::create_initial_map(&exps, &config);
+        let (current_pos, free_qubits) = TeledataOnly::create_initial_map(&exps, &config);
         Self {
             current_pos,
             free_qubits,
@@ -54,7 +45,7 @@ impl NaiveNodeAllocator {
     }
 }
 
-impl NodeAllocator for NaiveNodeAllocator {
+impl RemoteOpRouter for TeledataOnly {
     fn current_pos(&self, id: &String) -> u32 {
         self.current_pos[id]
     }
@@ -66,54 +57,22 @@ impl NodeAllocator for NaiveNodeAllocator {
         let pos1 = *self.current_pos.get(id1).unwrap();
         let pos2 = *self.current_pos.get(id2).unwrap();
         if pos1 == pos2 { // local operation
-            return RemoteOp::Move(Vec::new());
-        }
-        if self.free_qubits[pos1 as usize] > 0 {
+            RemoteOp::LocalCX
+        } else if self.free_qubits[pos1 as usize] > 0 {
             // move to pos1
             self.free_qubits[pos1 as usize] -= 1;
             self.free_qubits[pos2 as usize] += 1;
             *self.current_pos.get_mut(id2).unwrap() = pos1;
-            return RemoteOp::Move(vec![(id2.clone(), pos2, pos1)]);
-        }
-        if self.free_qubits[pos2 as usize] > 0 {
+            RemoteOp::Move(id2.clone(), pos2, pos1)
+        } else if self.free_qubits[pos2 as usize] > 0 {
             self.free_qubits[pos2 as usize] -= 1;
             self.free_qubits[pos1 as usize] += 1;
             *self.current_pos.get_mut(id1).unwrap() = pos2;
-            return RemoteOp::Move(vec![(id1.clone(), pos1, pos2)]);
+            RemoteOp::Move(id1.clone(), pos1, pos2)
+        } else { // Use swap (RCX * 3)
+            *self.current_pos.get_mut(id1).unwrap() = pos2;
+            *self.current_pos.get_mut(id2).unwrap() = pos1;
+            RemoteOp::RSwap
         }
-        // find another position
-        let mut tmp_node = None;
-        for i in 0..self.free_qubits.len() {
-            if self.free_qubits[i] > 0 {
-                tmp_node = Some(i);
-            }
-        }
-        let tmp_node = tmp_node.expect("There is no space for sending a qubit") as u32;
-        let mut res = Vec::new();
-        for (k, pos) in &self.current_pos {
-            if *pos == pos1 && k != id1 {
-                // k: pos1 --> tmp_node
-                // id2: pos2 --> pos1
-                res.push((k.clone(), pos1, tmp_node));
-                res.push((id2.clone(), pos2, pos1));
-                self.free_qubits[pos2 as usize] += 1;
-                self.free_qubits[tmp_node as usize] -= 1;
-                break;
-            }
-            if *pos == pos2 && k != id2 {
-                // k: pos2 --> tmp_node
-                // id1: pos1 --> pos2
-                res.push((k.clone(), pos2, tmp_node));
-                res.push((id1.clone(), pos1, pos2));
-                self.free_qubits[pos1 as usize] += 1;
-                self.free_qubits[tmp_node as usize] -= 1;
-                break;
-            }
-        }
-        assert!(res.len() > 0);
-        for (id, _, to) in &res {
-            *self.current_pos.get_mut(id).unwrap() = *to;
-        }
-        RemoteOp::Move(res)
     }
 }

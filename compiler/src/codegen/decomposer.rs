@@ -72,6 +72,7 @@ impl Decomposer {
                 let label2 = Label::new(label.to_string() + "_2");
                 res.push(Process::Send(SendProc { s: s.clone(), dst: p, data: (label, Expr::Var(x1)) }));
                 res.push(Process::Send(SendProc { s, dst: p, data: (label2, Expr::Var(x2)) }));
+                res.push(Process::Free(FreeProc { arg }));
                 res
             },
             Process::QRecv(QRecvProc { s, label, dst, ent, uid: _ }) => {

@@ -6,13 +6,17 @@ run_qasm() {
     local target=$1
     local config=$2
     local base=`basename ${target%.qasm}`
-    local outfile1="${base}.inq"
-    local metfile1="${base}.json"
-    local outfile2="${base}_quasi.inq"
-    local metfile2="${base}_quasi.json"
-    echo "Compiling ${target}"
-    ./target/release/inqcc ${target} -o ${outdir}/${outfile1} --config ${config} --strategy always-remote --metrics ${outdir}/${metfile1} --depends ${outdir}/${base}.dot
-    #./target/release/inqcc ${target} -o ${outdir}/${outfile2} --config ${config} --strategy always-remote --metrics ${outdir}/${metfile2} --quasi-para --depends ${outdir}/${base}_quasi.dot
+    local outfiles=("${base}_teledata.inq" "${base}_telegate.inq")
+    local metfiles=("${base}_teledata.json" "${base}_telegate.json")
+    local strategies=("teledata-only" "telegate-only")
+    for ((j=0; j<${#outfiles[@]}; j++))
+    do
+        local out=${outfiles[j]}
+        local met=${metfiles[j]}
+        local st=${strategies[j]}
+        echo "Compiling ${target} for ${out}"
+        ./target/release/inqcc ${target} -o ${outdir}/${out} --config ${config} --strategy ${st} --metrics ${outdir}/${met}
+    done
 }
 
 targets=(
