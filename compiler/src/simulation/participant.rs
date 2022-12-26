@@ -8,6 +8,7 @@ use crate::simulation::{
     shared_memory::SharedMemory,
     comm_buffer::SendData,
     evaluation_cost::{EvaluationCost, collect_cost},
+    latency::Latency,
 };
 use std::rc::Rc;
 use std::cell::RefCell;
@@ -27,7 +28,7 @@ impl Registers {
     pub fn new(num_q: usize, num_cq: HashMap<ParticipantId, u32>) -> Self {
         let q = (0..num_q).fold(BinaryHeap::new(), |mut h, i| {
             let q = Qubit::new(QubitKind::Data, i as u32);
-            let initial_cost = EvaluationCost::new(0, 0, 0);
+            let initial_cost = Default::default();
             h.push(Reverse((initial_cost, q)));
             h
         });
@@ -39,7 +40,7 @@ impl Registers {
             (0..*num).into_iter().for_each(|_| {
                 let cq = Qubit::new(QubitKind::Comm, counter);
                 q_to_partner.insert(cq.id(), partner.clone());
-                let initial_cost = EvaluationCost::new(0, 0, 0);
+                let initial_cost = Default::default();
                 h.push(Reverse((initial_cost, cq)));
                 counter += 1;
             });
@@ -105,10 +106,11 @@ pub struct Participant {
     shared_memory: Rc<RefCell<SharedMemory>>,
     cost_when_finished: HashMap<String, EvaluationCost>,
     var_to_qubit: HashMap<String, Qubit>,
+    latency: Latency,
 }
 
 impl Participant {
-    pub fn new(id: ParticipantId, num_q: usize, num_cq: HashMap<ParticipantId, u32>, mem: Rc<RefCell<SharedMemory>>) -> Self {
+    pub fn new(id: ParticipantId, num_q: usize, num_cq: HashMap<ParticipantId, u32>, mem: Rc<RefCell<SharedMemory>>, latency: Latency) -> Self {
         Self {
             id,
             reg: Registers::new(num_q, num_cq),
@@ -117,6 +119,7 @@ impl Participant {
             shared_memory: mem,
             cost_when_finished: HashMap::new(),
             var_to_qubit: HashMap::new(),
+            latency,
         }
     }
 
@@ -149,7 +152,7 @@ impl Participant {
     }
 
     fn try_issue(&mut self, process: Process) -> bool {
-        let latency = self.latency(&process);
+        let latency = self.latency.latency(&process);
         match process {
             Process::Open(proc) => {
                 let mut mem = self.shared_memory.borrow_mut();
@@ -160,7 +163,7 @@ impl Participant {
                 let x = proc.dst.clone();
                 if let Some((q, mut cost)) = self.reg.init_data_qubit() {
                     self.var_to_qubit.insert(x.clone(), q);
-                    cost.add_time(latency);
+                    cost.add_total_time(latency);
                     self.cost_when_finished.insert(x, cost);
                     true
                 } else {
@@ -181,7 +184,7 @@ impl Participant {
                     if let Some(cost2) = mem.check_ent(self.id, proc.label) {
                         let mut cost = collect_cost(vec![cost, cost2]);
                         self.var_to_qubit.insert(x.clone(), q);
-                        cost.add_time(latency);
+                        cost.add_gen_ent_time(latency);
                         cost.add_e_depth(1);
                         self.cost_when_finished.insert(x, cost);
                         true
@@ -196,7 +199,7 @@ impl Participant {
             Process::EntSwap(proc) => {
                 let args = [&proc.arg1, &proc.arg2];
                 let mut cost = collect_cost(args.iter().map(|&var| self.cost_when_finished[var]).collect());
-                cost.add_time(latency);
+                cost.add_total_time(latency);
                 args.iter().for_each(|&var| {
                     self.cost_when_finished.insert(var.clone(), cost);
                     self.reg.free_qubit(self.var_to_qubit.remove(var).unwrap(), cost);
@@ -212,7 +215,7 @@ impl Participant {
                 let mut cost = collect_cost(inquir::variables(&e).into_iter().map(|var| {
                     self.cost_when_finished[&var]
                 }).collect());
-                cost.add_time(latency);
+                cost.add_total_time(latency);
                 cost.add_c_depth(1);
                 let send_data = SendData::new(l, cost, dummy_val);
                 self.shared_memory.borrow_mut().send(proc.s, proc.dst, send_data);
@@ -222,7 +225,7 @@ impl Participant {
                 let (l, var) = proc.data;
                 if let Some(recv_data) = self.shared_memory.borrow_mut().recv(proc.s, self.id, l) {
                     let mut cost = recv_data.cost();
-                    cost.add_time(latency);
+                    cost.add_total_time(latency);
                     cost.add_c_depth(1);
                     self.cost_when_finished.insert(var, cost);
                     true
@@ -232,11 +235,11 @@ impl Participant {
             },
             Process::Apply(proc) => {
                 let qs_cost = collect_cost(proc.args.iter().map(|var| self.cost_when_finished[var]).collect());
-                let ctrl_cost = proc.ctrl.map_or(EvaluationCost::new(0, 0, 0), |e| {
+                let ctrl_cost = proc.ctrl.map_or(Default::default(), |e| {
                     collect_cost(inquir::variables(&e).into_iter().map(|var| self.cost_when_finished[&var]).collect())
                 });
                 let mut cost = collect_cost(vec![qs_cost, ctrl_cost]);
-                cost.add_time(latency);
+                cost.add_total_time(latency);
                 proc.args.into_iter().for_each(|var| {
                     *self.cost_when_finished.get_mut(&var).unwrap() = cost;
                 });
@@ -245,7 +248,7 @@ impl Participant {
             Process::Measure(proc) => {
                 let prev_costs = proc.args.iter().map(|var| self.cost_when_finished[var]).collect();
                 let mut cost = collect_cost(prev_costs);
-                cost.add_time(latency);
+                cost.add_total_time(latency);
                 proc.args.into_iter().for_each(|var| {
                     *self.cost_when_finished.get_mut(&var).unwrap() = cost;
                 });
@@ -257,21 +260,6 @@ impl Participant {
             Process::RCXC(_) => unimplemented!(),
             Process::RCXT(_) => unimplemented!(),
             Process::Parallel(_) => unimplemented!(),
-        }
-    }
-
-    fn latency(&self, process: &Process) -> u32 { // TODO: make customizable
-        match process {
-            Process::Open(_) => 0,
-            Process::GenEnt(_) => 10,
-            Process::EntSwap(_) => 3,
-            // These operations must be decomposed before simulation.
-            Process::Parallel(_) => unimplemented!(),
-            Process::QSend(_) => unimplemented!(),
-            Process::QRecv(_) => unimplemented!(),
-            Process::RCXC(_) => unimplemented!(),
-            Process::RCXT(_) => unimplemented!(),
-            _ => 1,
         }
     }
 

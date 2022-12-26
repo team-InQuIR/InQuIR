@@ -2,6 +2,7 @@ use crate::simulation::{
     participant::Participant,
     shared_memory::SharedMemory,
     evaluation_cost::{EvaluationCost, collect_cost},
+    latency::Latency,
 };
 use crate::arch::Configuration;
 use inquir::{
@@ -42,7 +43,8 @@ impl Simulator {
                 num_cq.insert(p, *e.weight());
             });
             let process = inquir::system::projection(s, id).unwrap();
-            let mut p = Participant::new(id, num_q, num_cq, Rc::clone(&shared_memory));
+            let latency = Latency::new(config.node_info_ref(id.to_usize()).clone());
+            let mut p = Participant::new(id, num_q, num_cq, Rc::clone(&shared_memory), latency);
             p.add_process(process);
             p
         }).collect();

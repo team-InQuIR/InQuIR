@@ -94,7 +94,7 @@ fn main() {
         println!("  E-count: {}", metrics.e_count());
         println!("  C-depth: {}", metrics.c_depth());
         println!("  C-count: {}", metrics.c_count());
-        println!("  Execution cost: {}", metrics.time());
+        println!("  Total time: {}", metrics.total_time());
         output_metrics(&met_path, &metrics).unwrap();
     }
 }
