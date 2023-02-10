@@ -68,7 +68,7 @@ impl Simulator {
         }
     }
 
-    pub fn run(mut self) -> EvaluationCost {
+    pub fn run(&mut self) -> EvaluationCost {
         println!("Start simulation.");
         while self.participants.iter().any(|p| !p.is_completed()) {
             let steps: Vec<_> = self.participants.iter_mut().map(|p| {
@@ -87,7 +87,15 @@ impl Simulator {
             }
         }
         self.mp.clear().unwrap();
-        collect_cost(self.participants.into_iter().map(|p| p.evaluation_cost()).collect())
+        collect_cost(self.participants.iter().map(|p| p.evaluation_cost()).collect())
+    }
+
+    pub fn issue_timestamps(&self) -> Vec<Vec<(u64, usize)>> {
+        self.participants.iter().map(|p| {
+            let mut time_stamp = p.issue_timestamp().clone();
+            time_stamp.sort();
+            time_stamp
+        }).collect()
     }
 }
 

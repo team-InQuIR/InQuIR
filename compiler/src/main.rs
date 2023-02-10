@@ -43,6 +43,10 @@ struct Args {
     /// Where a dependency graph is output.
     #[clap(long)]
     depends: Option<String>,
+
+    /// Whether output an timestamps of issues.
+    #[clap(long)]
+    timestamp: Option<String>,
 }
 
 fn output_to_inquir_file(filename: &String, program: &System) -> Result<(), std::io::Error> {
@@ -86,7 +90,7 @@ fn main() {
     };
 
     if let Some(met_path) = args.metrics {
-        let simulator = Simulator::new(&res, &config);
+        let mut simulator = Simulator::new(&res, &config);
         let cost = simulator.run();
         let metrics = Metrics::new(&res, cost);
         println!("Metrics:");
@@ -96,5 +100,25 @@ fn main() {
         println!("  C-count: {}", metrics.c_count());
         println!("  Total time: {}", metrics.total_time());
         output_metrics(&met_path, &metrics).unwrap();
+
+        if let Some(time_path) = args.timestamp {
+            let timestamps = simulator.issue_timestamps();
+            let mut file = std::fs::File::create(time_path).unwrap();
+            let mut endline = false;
+            for timestamps in timestamps {
+                if endline {
+                    write!(file, "\n").unwrap();
+                }
+                endline = true;
+                let mut comma = false;
+                for (t, _) in timestamps {
+                    if comma {
+                        write!(file, ",").unwrap();
+                    }
+                    comma = true;
+                    write!(file, "{}", t).unwrap();
+                }
+            }
+        }
     }
 }

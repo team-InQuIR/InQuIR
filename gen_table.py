@@ -21,22 +21,29 @@ for json_path in result_jsons:
     with open(json_path) as f:
         data.append((circ_name, json.load(f)))
 
-s = ''
+ss = []
+
 if len(data) > 0:
-    keys = data[0][1].keys()
+    keys = ['e_count', 'c_count', 'e_depth', 'c_depth', 'total_time']
     # header
-    s += 'circuit name'
+    s = 'circuit name'
     for key in keys:
         s += ' & ' + fix_name(key)
     s += ' \\\\ \\hline\\hline\n'
+    ss.append(s)
 
     # each data
     for i in range(len(data)):
         (name, json) = data[i]
-        s += fix_name(name)
+        s = fix_name(name)
         for key in keys:
             s += ' & ' + str(json[key])
         s += ' \\\\ \\hline\n'
+        ss.append(s)
 
-    print(s)
+    ss.sort()
+    res = ''
+    for s in ss:
+        res += s
+    print(res)
 
